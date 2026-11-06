@@ -1,0 +1,104 @@
+---
+title: Cấu hình và vận hành hệ thống
+sidebar_label: Cấu hình và vận hành
+---
+
+# Cấu hình và vận hành hệ thống
+
+ZFile cho phép quản trị viên thay đổi cấu hình runtime, chặn request theo IP hoặc User-Agent và dùng log để kiểm tra hoạt động của hệ thống.
+
+Phần nghiệp vụ dành cho BA và người vận hành; tên endpoint, class và field ở mục cuối dành cho lập trình viên mới.
+
+## Mục tiêu business
+
+- Chia cấu hình theo nhóm để mỗi màn hình quản trị chỉ cập nhật các field thuộc phạm vi của nó.
+- Áp dụng một số thay đổi đường dẫn ngay khi hệ thống đang chạy, không cần khởi động lại ứng dụng.
+- Chặn request từ IP hoặc User-Agent khớp danh sách cấm trước khi request đi vào controller.
+- Cung cấp login log, download log và gói log chẩn đoán cho việc điều tra sự cố.
+
+## Nhóm cấu hình
+
+| Nhóm | Endpoint cập nhật | Phạm vi chính |
+| --- | --- | --- |
+| Site | `PUT /admin/config/site` | Tên site, địa chỉ backend/frontend, nhận diện site, giới hạn upload đồng thời và authorization code. |
+| View | `PUT /admin/config/view` | Bố cục, cách hiển thị danh sách, phần mở rộng preview, OnlyOffice, kkFileView, sắp xếp và hộp thoại xác nhận download. |
+| Security | `PUT /admin/config/security` | Nút đăng nhập, secure login entry, captcha, 2FA admin, login log và nội dung trang khách. |
+| Link | `PUT /admin/config/link` | Direct/short link, download log, Referer, rate limit, prefix direct link và danh sách thời hạn short link. |
+| Access | `PUT /admin/config/access` | Danh sách cấm IP và User-Agent. |
+
+`GET /admin/config` trả cấu hình hiện tại. Ở demo site, response xóa `authCode` và `rsaHexKey`; các endpoint cập nhật có `@DemoDisable` nên không dùng được khi chế độ demo chặn thao tác quản trị.
+
+## Vòng đời cập nhật cấu hình
+
+1. Controller nhận đúng request model của từng nhóm rồi sao chép các field sang `SystemConfigDTO`.
+2. `SystemConfigService#updateSystemConfig` chỉ xét field đã tồn tại trong bảng cấu hình và bỏ qua giá trị `null`. Field có trong DTO nhưng không có trong bảng chỉ tạo warning, không được tự động thêm.
+3. Giá trị khác hiện tại đi qua `SystemConfigModifyHandlerChain` trước khi `systemConfigMapper.updateById` ghi dữ liệu.
+4. Transaction rollback khi có exception. Sau lời gọi cập nhật, cache cấu hình bị xóa để lần đọc sau nạp lại từ database.
+
+Việc cập nhật theo nhóm là partial update ở tầng service: field `null` không ghi đè giá trị hiện có. Riêng endpoint security đặt `loginVerifySecret` thành chuỗi rỗng khi `adminTwoFactorVerify` không phải `true`, nên tắt 2FA admin cũng xóa secret đang lưu.
+
+## Dynamic routing
+
+Hai field cấu hình thay đổi Spring MVC mapping trong lúc ứng dụng đang chạy:
+
+| Field | Tác động runtime |
+| --- | --- |
+| `secureLoginEntry` | `SecureLoginEntryModifyHandler` bỏ mapping đăng nhập cũ và đăng ký mapping mới. Giá trị chỉ nhận chữ cái, số, `_`, `-` và tối đa 32 ký tự. |
+| `directLinkPrefix` | `DirectLinkPrefixModifyHandler` thay mapping phân giải direct link bằng prefix mới. Request cập nhật không chấp nhận giá trị rỗng. |
+
+Handler chạy trước khi giá trị mới được ghi. Nếu thao tác đổi mapping ném exception, transaction không ghi cấu hình mới. Nếu mapping đã đổi nhưng bước ghi database sau đó lỗi, source đã khảo sát không có thao tác khôi phục mapping cũ. URL dùng prefix hoặc secure login entry cũ không còn là route hiện hành sau khi mapping mới được đăng ký thành công.
+
+## Lọc IP và User-Agent
+
+`SecurityFilter` chạy trên `/*` và đọc cấu hình ở mỗi request qua cache của `SystemConfigService`.
+
+- `accessIpBlocklist` được tách theo từng dòng và so khớp bằng rule matcher loại IP. Source request cho thấy rule có thể là một IP hoặc dải CIDR.
+- `accessUaBlocklist` cũng được tách theo từng dòng, nhưng dùng Spring simple matcher; mẫu có thể chứa wildcard như `*`.
+- IP được lấy bằng `JakartaServletUtil.getClientIP(request)`. Khi triển khai sau reverse proxy, độ tin cậy của IP phụ thuộc header chuyển tiếp mà hạ tầng cung cấp.
+- Chỉ cần IP hoặc User-Agent khớp một rule, filter trả HTTP `403` với nội dung `disable access.[...]` và không gọi filter chain tiếp theo.
+- Danh sách rỗng không chặn request. Đây là blocklist, không phải allowlist.
+
+## Log, audit và export
+
+| Dữ liệu | Khi nào ghi | Khả năng quản trị đã xác minh |
+| --- | --- | --- |
+| Login log | `LoginLogAspect` bao quanh đăng nhập bằng mật khẩu; `loginLogMode` quyết định tắt log, lưu toàn bộ hoặc che password theo kết quả. | Phân trang và lọc theo username, password, IP, User-Agent, Referer, kết quả và khoảng thời gian. |
+| Download log | Direct/short link ghi khi `recordDownloadLog=true`. Bản ghi phản ánh lần phân giải URL, không chứng minh client đã tải xong tệp. | Phân trang, lọc, xóa theo ID, xóa hàng loạt và xóa theo điều kiện lọc. Source đã khảo sát không có endpoint export download log. |
+| Short link | Bản ghi short link được quản lý độc lập với download log. | Admin có thể xuất trang kết quả theo bộ lọc ra Excel. |
+| Log chẩn đoán | Ứng dụng ghi file vào đường dẫn `zfile.log.path`. | `GET /admin/log/download` nén cả đường dẫn log và trả file `ZFile 诊断日志 - {thời gian}.zip`. |
+
+`loginLogMode=all` lưu cả password có trong request đăng nhập. Hai mode `ignoreSuccessPwd` và `ignoreAllPwd` thay password bằng `******` theo phạm vi tương ứng; `off` không tạo login log. Người vận hành cần coi login log và gói chẩn đoán là dữ liệu nhạy cảm, giới hạn người được tải và thời gian lưu giữ.
+
+## Rules/exception
+
+| Điều kiện | Kết quả đã xác minh |
+| --- | --- |
+| Field gửi lên không tồn tại trong bảng system config | Không được tạo mới; service ghi warning. |
+| Giá trị field là `null` | Không cập nhật field đó. |
+| Tắt `adminTwoFactorVerify` | Endpoint security ghi `loginVerifySecret=""`. |
+| `secureLoginEntry` sai pattern hoặc dài hơn 32 ký tự | Validation từ chối request. |
+| `directLinkPrefix` rỗng | Validation từ chối request. |
+| IP hoặc User-Agent khớp blocklist | Request dừng tại `SecurityFilter` với HTTP `403`. |
+| Tải log chẩn đoán ở demo site | Bị `@DemoDisable` chặn. |
+
+**Chưa xác minh:** chính sách retention hoặc rotation của login/download log; giới hạn kích thước gói log chẩn đoán; cơ chế tin cậy cụ thể cho các header IP khi chạy sau từng reverse proxy; quyền truy cập chi tiết ngoài interceptor chung của `/admin/**`.
+
+## Scenario
+
+Quản trị viên đổi `directLinkPrefix` rồi lưu nhóm Link. Handler đăng ký mapping mới trước khi service ghi cấu hình. Từ thời điểm đó, URL direct link dùng prefix cũ không còn phân giải qua route cũ; dữ liệu short link không bị đổi vì short link dùng route riêng. Nếu đồng thời bật `recordDownloadLog`, mỗi lần direct/short link được phân giải thành URL tải sẽ tạo một bản ghi audit, kể cả khi client không hoàn tất tải tệp.
+
+## Vị trí trong mã nguồn
+
+| Vai trò | Vị trí nguồn |
+| --- | --- |
+| Đọc và cập nhật năm nhóm setting | `im.zhaojun.zfile.module.config.controller.SettingController` |
+| Nạp, cache và ghi system config | `im.zhaojun.zfile.module.config.service.SystemConfigService` |
+| Xử lý side effect trước khi lưu | `SystemConfigModifyHandlerChain`, `SecureLoginEntryModifyHandler`, `DirectLinkPrefixModifyHandler` |
+| Đăng ký lại route runtime | `DynamicLoginEntryService`, `DynamicDirectLinkPrefixService` |
+| Chặn IP và User-Agent | `im.zhaojun.zfile.core.filter.SecurityFilter`, `RuleMatcherFactory` |
+| Ghi và tra cứu login log | `LoginLogAspect`, `LoginLogController`, `LoginLogModeEnum` |
+| Ghi và quản lý download log | `LinkDownloadService`, `DownloadLogManagerController` |
+| Xuất short link | `ShortLinkManagerController#exportExcel` |
+| Tải log chẩn đoán | `im.zhaojun.zfile.core.controller.LogController` |
+
+Đọc thêm: [Danh tính và quản trị](./identity-and-administration) và [Chia sẻ và liên kết](./sharing-and-links).

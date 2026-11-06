@@ -1,0 +1,8 @@
+schema_version: "1.1"
+name: edit-enduser-register
+expected_outcome: |
+  The same password-reset help article rewritten for ordinary users: one form of
+  address, no English jargon (OTP and email may stay), UI labels unchanged, every
+  limit and condition kept, hedges ("thường", "có thể") kept, filler removed.
+context:
+  scaffold_script: place-files.sh

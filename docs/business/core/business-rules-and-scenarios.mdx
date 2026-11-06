@@ -1,0 +1,89 @@
+---
+title: Quy tắc và tình huống thực tế
+sidebar_label: 5. Quy tắc và tình huống
+---
+
+# Quy tắc và tình huống thực tế
+
+Các tình huống này giúp lập trình viên mới dự đoán kết quả nghiệp vụ trước khi tìm lỗi ở controller, aspect hoặc provider.
+
+## Tình huống 1: User thấy source nhưng không thao tác được
+
+**Bối cảnh:** admin đã tạo storage source, nhưng user bị từ chối khi duyệt hoặc upload.
+
+**Cách suy luận:** trước hết xác định user thấy source qua discovery hay đang gọi một URL đã biết. Discovery yêu cầu `StorageSource.enable=true`; ordinary file operation không được `FileOperatorCheckAspect` kiểm tra cờ này. Với file operation, kiểm tra user hiện tại và `UserStorageSource.enable`; `AVAILABLE` không cần permission thao tác riêng, còn upload cần `UPLOAD`. Nếu assignment không tồn tại, code hiện có nguy cơ null dereference thay vì từ chối sạch. Nếu permission đúng, tiếp tục kiểm tra password theo path và khả năng của provider.
+
+**Kết quả:** không sửa quyền một cách mù quáng. Trước tiên xác định lớp đang chặn: assignment, quyền thao tác, mật khẩu hay provider.
+
+Nguồn: `FileOperatorCheckAspect#allowAccess`, `CheckPasswordAspect#around`, [Kiểm soát truy cập](../access-control).
+
+## Tình huống 2: User di chuyển nhiều tệp, một số tệp thất bại
+
+**Bối cảnh:** batch move/copy trả kết quả hỗn hợp.
+
+**Quy tắc:** số phần tử nguồn và đích phải bằng nhau. Một tệp/thư mục không được move/copy vào thư mục con của chính nó; controller đánh dấu item đó fail nhưng tiếp tục xử lý item khác trong batch. Move/copy cũng kiểm tra password cho source và target path.
+
+**Kết quả:** giao diện hoặc bên gọi phải đọc kết quả theo từng mục, không kết luận cả lô thành công chỉ vì request hoàn tất.
+
+Nguồn: `FileOperatorController`, [Thao tác tệp](../file-operations).
+
+## Tình huống 3: Share link mở được nhưng download không được
+
+**Bối cảnh:** khách có `shareKey` hợp lệ, nhưng thao tác cần nội dung thất bại hoặc tệp không tải xuống.
+
+**Quy tắc:** share link hết hạn hoặc bị xóa không hợp lệ; thao tác cần nội dung từ chối password thiếu/sai. Với direct/short link, disable-download filter của file hoặc parent path có thể redirect đến forbidden URL; Referer và rate limit cũng có thể chặn khi được cấu hình.
+
+**Kết quả:** tách lỗi "liên kết không hợp lệ" khỏi "liên kết hợp lệ nhưng tải xuống bị policy chặn".
+
+Nguồn: `ShareLinkFileService`, `LinkDownloadService`, [Chia sẻ và liên kết](../sharing-and-links).
+
+## Tình huống 4: Cần một link vĩnh viễn
+
+**Bối cảnh:** user chọn short link không hết hạn.
+
+**Quy tắc:** `expireTime = -1` tạo short link vĩnh viễn; với cùng nguồn lưu trữ và đường dẫn, hệ thống tái sử dụng short link vĩnh viễn đã tồn tại. Mọi giá trị được chọn, kể cả `-1`, phải có trong `linkExpireTimes`. Lúc phân giải, `showShortLink` phải là `true`.
+
+**Kết quả:** "vĩnh viễn" là thuộc tính của short link theo quy tắc này, không có nghĩa nguồn lưu trữ hoặc tệp sẽ luôn tồn tại.
+
+Nguồn: `ShortLinkService#validateExpireTime`, `LinkDownloadService#handlerShortLink`, [Chia sẻ và liên kết](../sharing-and-links).
+
+## Tình huống 5: Preview Office không lưu được chỉnh sửa
+
+**Bối cảnh:** user mở tệp Office nhưng chỉ thấy read-only hoặc callback không ghi tệp.
+
+**Quy tắc:** nếu `onlyOfficeSecret` rỗng, payload hạ quyền chỉnh sửa xuống read-only và callback bị từ chối. Khi có secret, callback chỉ có thể ghi sau khi token/key hợp lệ, preview cho phép sửa, user có `UPLOAD`, và adapter đáp ứng điều kiện đã xác minh.
+
+**Kết quả:** kiểm tra cấu hình OnlyOffice, quyền upload và loại provider trước khi kết luận lỗi ở giao diện.
+
+**Chưa xác minh:** ma trận preview/edit lưu thành công cho mọi provider chưa được khảo sát end-to-end.
+
+Nguồn: `OnlyOfficeConfigService`, [Xem trước và tích hợp](../preview-and-integrations).
+
+## Tình huống 6: Permission có tên link nhưng không chặn tạo link
+
+**Bối cảnh:** user không có `SHARE_LINK` hoặc `SHORT_LINK`, nhưng request tạo link vẫn chạy.
+
+**Quy tắc:** `ShareLinkController` và `ShortLinkController` có gắn `@StoragePermissionCheck` với action tương ứng. Tuy nhiên, `FileOperatorCheckAspect#annotationCheck` chỉ gọi kiểm tra permission khi action là `LINK`; các action khác đi thẳng tới controller.
+
+**Kết quả:** đây là **caveat implementation**, không phải cam kết rằng mọi người dùng nên được tạo liên kết. Aspect không enforce hai permission này, nhưng request vẫn có thể thất bại vì validation hoặc điều kiện khác của endpoint. Không dùng tên enum hoặc sự hiện diện của annotation để kết luận request chắc chắn thành công.
+
+Nguồn: `FileOperatorCheckAspect#annotationCheck`, `ShareLinkController#createShareLink`, `ShortLinkController#generatorShortLink`, [Ma trận quyền](../permission-matrix).
+
+## Tình huống 7: Permission download không thu hồi mọi URL
+
+**Bối cảnh:** user thiếu `DOWNLOAD`, nhưng response hoặc một đường link khác vẫn cho phép lấy nội dung.
+
+**Quy tắc:** trong listing, `FileDownloadPermissionCommand` chỉ xóa `url` khi user thiếu cả `PREVIEW` và `DOWNLOAD`. Chỉ có `PREVIEW` vẫn giữ URL. Direct/short link có handler và policy riêng, không lấy `DOWNLOAD` làm điều kiện truy cập tuyệt đối.
+
+**Kết quả:** xem `PREVIEW`/`DOWNLOAD` là quyền chủ yếu định hình response. Muốn chặn tải theo đường dẫn, phải kiểm tra disable-download filter và đúng handler; không suy ra đã thu hồi truy cập chỉ từ việc bỏ `DOWNLOAD`.
+
+Nguồn: `FileDownloadPermissionCommand`, `LinkDownloadService`, [Quyết định truy cập và hiển thị](./access-and-visibility).
+
+## Danh sách kiểm tra khi đọc mã nguồn
+
+1. Xác định vai trò và kết quả mong muốn.
+2. Xác định `storageKey`, đường dẫn và đường dẫn gốc của người dùng có tham gia không.
+3. Tách quyền, mật khẩu, bộ lọc và policy liên kết thành các kiểm tra riêng.
+4. Kiểm tra giới hạn của provider và các mục **Chưa xác minh** trước khi đưa ra kết luận sản phẩm.
+
+Đọc lại [Mô hình business](./business-model) và [Các quy trình cốt lõi](./core-workflows) khi cần nối một quy tắc với luồng end-to-end.

@@ -1,0 +1,38 @@
+---
+title: Ma trận quyền
+sidebar_label: Ma trận quyền
+---
+
+# Ma trận quyền
+
+Ma trận này cho biết lớp nào quyết định một yêu cầu được tiếp tục. Đây không phải ma trận capability của provider; xem [Ma trận khả năng provider](./provider-capability-matrix) trước khi hứa hẹn outcome thao tác.
+
+| Phạm vi | Điều kiện đã xác minh | Khi không đạt | Nguồn |
+| --- | --- | --- | --- |
+| Quản trị `/admin/**` | User đã đăng nhập và có role `admin` | Từ chối request quản trị | [Danh tính và quản trị](./identity-and-administration) |
+| Discovery storage source | `StorageSource.enable=true`, user bật và `UserStorageSource.enable=true` | Source không xuất hiện trong danh sách | [Kiểm soát truy cập](./access-control) |
+| Dùng storage source qua file service | User và `UserStorageSource` đều bật; ordinary aspect không kiểm tra `StorageSource.enable` | Từ chối file operation; assignment thiếu có thể gây null dereference thay vì lỗi nghiệp vụ sạch | [Kiểm soát truy cập](./access-control) |
+| Duyệt nội dung source | Các điều kiện của file service đạt; operation là `AVAILABLE` | Không áp dụng permission thao tác riêng | [Quyết định truy cập và hiển thị](./core/access-and-visibility) |
+| Thao tác tệp | Điều kiện dùng source đạt và `permissions` chứa operation tương ứng | Từ chối operation | [Kiểm soát truy cập](./access-control) |
+| Bỏ password path | User có `IGNORE_PASSWORD` | Password rule vẫn được kiểm tra | [Kiểm soát truy cập](./access-control) |
+| Bỏ filter matching | User có `IGNORE_HIDDEN`; `testPattern` trả `false` cho mọi danh sách rule | Cả inaccessible, hidden và disable-download vẫn áp dụng theo path | [Kiểm soát truy cập](./access-control) |
+| URL trong response listing | Có ít nhất một trong hai quyền `PREVIEW` hoặc `DOWNLOAD` | Thiếu cả hai thì `FileDownloadPermissionCommand` xóa `url` | [Quyết định truy cập và hiển thị](./core/access-and-visibility) |
+| Tự đặt `shareKey` | User có `CUSTOM_SHARE_KEY` trên storage source đang bật | Không tạo được custom key | [Chia sẻ và liên kết](./sharing-and-links) |
+| Tạo direct link | Aspect đã khảo sát kiểm tra action `LINK` | Từ chối nếu thiếu permission | [Chia sẻ và liên kết](./sharing-and-links) |
+| Tạo share link | Controller khai báo action `SHARE_LINK`, nhưng aspect hiện chỉ enforce `LINK` | Permission `SHARE_LINK` hiện không chặn request | [Kiểm soát truy cập](./access-control) |
+| Tạo short link | Controller khai báo action `SHORT_LINK`, nhưng aspect hiện chỉ enforce `LINK` | Permission `SHORT_LINK` hiện không chặn request | [Kiểm soát truy cập](./access-control) |
+| Xóa share link | Người tạo link hoặc admin | Báo thao tác không hợp lệ | [Chia sẻ và liên kết](./sharing-and-links) |
+| Ghi lại Office edit | Preview cho phép sửa, callback hợp lệ, user cache có `UPLOAD`, và adapter đáp ứng điều kiện | Không ghi file | [Xem trước và tích hợp](./preview-and-integrations) |
+
+## Thứ tự đọc khi bị từ chối
+
+1. Xác định request là quản trị, file operation hay khách qua link.
+2. Với file operation, kiểm tra user, `UserStorageSource.enable` và permission operation. Chỉ kiểm tra `StorageSource.enable` nếu đang phân tích discovery hoặc một handler có kiểm tra riêng cờ này.
+3. Kiểm tra password, filter và policy download/path nếu endpoint áp dụng chúng.
+4. Kiểm tra capability provider riêng, vì permission hợp lệ không đảm bảo adapter thực hiện được thao tác.
+
+Khách qua share/direct/short link không đi theo bảng permission của user như file operation thông thường. Các rule hiệu lực link, password, chữ ký, Referer, rate limit và disable-download được mô tả tại [Chia sẻ và liên kết](./sharing-and-links).
+
+**Caveat implementation:** `PREVIEW` và `DOWNLOAD` chủ yếu định hình response listing. Có một trong hai quyền thì URL vẫn được giữ; riêng `DOWNLOAD` không phải cơ chế chặn tuyệt đối các đường direct/short link.
+
+**Caveat implementation:** `FileOperatorCheckAspect#annotationCheck` chỉ enforce action `LINK`. Dù endpoint tạo share link và short link có annotation, action `SHARE_LINK` và `SHORT_LINK` hiện đi thẳng qua aspect mà không kiểm tra permission tương ứng.

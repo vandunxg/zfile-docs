@@ -1,0 +1,7 @@
+schema_version: "1.1"
+name: edit-humanize-keep-facts
+expected_outcome: |
+  The same refund API guide, shorter and natural, with filler removed and every
+  technical fact, code block and status code unchanged; nothing new added.
+context:
+  scaffold_script: place-files.sh

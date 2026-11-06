@@ -1,0 +1,47 @@
+---
+title: Dữ liệu và cấu hình
+sidebar_label: Dữ liệu và cấu hình
+---
+
+# Dữ liệu và cấu hình
+
+ZFile dùng MyBatis-Plus cho persistence, Flyway cho schema/data migration và chọn SQLite hoặc MySQL bằng cấu hình datasource.
+
+## Datasource và MyBatis
+
+`application.properties` mặc định dùng SQLite: driver `org.sqlite.JDBC`, URL `jdbc:sqlite:${zfile.db.path}` và `zfile.db.path` mặc định là `${user.home}/.zfile-v4/db/zfile`. Khối MySQL trong cùng tệp là mẫu bị comment; khi chuyển datasource, đặt driver, URL, username và password phù hợp cho môi trường.
+
+Mapper Java nằm trong `src/main/java/.../module/*/mapper/`; XML nằm trong `src/main/resources/mapper/`. `application-default.properties` cấu hình `mybatis-plus.mapper-locations=classpath*:mapper/*.xml,...` và package type handler là `im.zhaojun.zfile.core.config`.
+
+## Flyway
+
+`DataSourceBeanPostProcessor` chọn duy nhất một location migration theo `spring.datasource.driver-class-name`:
+
+| Driver | Location |
+| --- | --- |
+| `org.sqlite.JDBC` | `classpath:db/migration-sqlite` |
+| `com.mysql.cj.jdbc.Driver` | `classpath:db/migration-mysql` |
+
+`spring.flyway.enabled=true`; `clean-disabled=true`, nên không dùng `clean` để xóa schema. Migration versioned dùng tên `V...__...sql`; cả hai thư mục có migration lặp lại `R__data.sql`. Khi thay đổi schema, thêm migration tương ứng cho mọi datasource được hỗ trợ, giữ thứ tự version và không sửa migration đã áp dụng.
+
+## Nguồn cấu hình runtime
+
+`application.properties` kích hoạt profile `prod` và import `application-default.properties`. `application-prod.properties` tắt Swagger/OpenAPI và Knife4j. `application-dev.properties` hiện không đặt thuộc tính nào.
+
+| Thuộc tính | Giá trị mặc định trong nguồn | Tác dụng |
+| --- | --- | --- |
+| `server.port` | `8080` | Cổng HTTP. |
+| `zfile.log.path` | `${user.home}/.zfile-v4/logs` | Thư mục log. |
+| `zfile.db.path` | `${user.home}/.zfile-v4/db/zfile` | Đường dẫn SQLite. |
+| `spring.web.resources.static-locations` | `file:static/` | Static resource bên ngoài classpath. |
+| `zfile.debug` | `false` | Cho phép endpoint đặt lại thông tin đăng nhập quản trị khi là `true`. |
+
+`ZFileProperties` bind prefix `zfile`, gồm `debug`, `version`, `demo-site` và cấu hình OAuth2. Giữ secret ngoài repository và không ghi secret, token, mật khẩu hay response OAuth vào log/issue. `application-default.properties` có các giá trị OAuth2 hiện hữu; không sao chép chúng sang cấu hình mới hoặc tài liệu.
+
+## Log và chẩn đoán
+
+`logback-spring.xml` ghi log dưới `zfile.log.path`: `zfile.log`, `zfile-warn.log`, `zfile-error.log` và riêng `zfile-debug.log`. File thường giới hạn 10 MB; info/warn/error giữ 15 ngày, debug giữ 3 ngày. Endpoint `GET /admin/log/download` nén thư mục log để tải về.
+
+Khi báo lỗi, kèm phiên bản, datasource đã chọn, route hoặc thao tác tái hiện, log đã che secret và stack trace nếu có. Không đính kèm archive log chưa rà soát vì pattern log có thể chứa request context.
+
+Nguồn: `application.properties`, `application-default.properties`, `application-prod.properties`, `ZFileProperties.java`, `DataSourceBeanPostProcessor.java`, `logback-spring.xml`, `LogController.java`.

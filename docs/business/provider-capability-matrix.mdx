@@ -1,0 +1,25 @@
+---
+title: Ma trận khả năng provider
+sidebar_label: Ma trận provider
+---
+
+# Ma trận khả năng provider
+
+Ma trận này giới hạn các khẳng định theo provider ở mức bằng chứng đã có. `StorageTypeEnum` chỉ cho biết backend công bố loại storage; nó không cam kết mọi thao tác, download hay preview đều hoạt động.
+
+| Nhóm hoặc provider | Bằng chứng đã xác minh | Không được suy ra |
+| --- | --- | --- |
+| Mọi provider có adapter phù hợp | `StorageSourceContext` chọn adapter, gọi `init()` và `testConnection()`; thành công thì file service được cache | Hỗ trợ đầy đủ thao tác tệp, preview hoặc Office edit |
+| Local, FTP, SFTP, WebDAV | Implementation kế thừa `AbstractProxyTransferService`, vì vậy có contract proxy upload/download; từng adapter triển khai các operation tệp của nó. | Mọi operation đều chạy thành công với mọi server hoặc cấu hình: **Chưa xác minh** |
+| UpYun, Google Drive, Open115 | Implementation kế thừa `AbstractProxyTransferService` và có implementation cho các operation tệp. | Callback OnlyOffice hoặc mọi operation chắc chắn thành công với mọi tài khoản/cấu hình: **Chưa xác minh** |
+| ALIYUN, TENCENT, HUAWEI, MINIO, S3, QINIU, DOGE_CLOUD | Các implementation kế thừa `AbstractS3BaseFileService`, còn lớp này kế thừa `AbstractProxyTransferService`. Lớp S3 base có code cho list/get item, tạo thư mục, xóa, upload, download/proxy transfer và rename/copy/move tệp. | Lớp base chủ động từ chối rename/copy/move thư mục. Các thao tác còn lại mới được xác nhận ở mức implementation; kết quả end-to-end phụ thuộc endpoint, credential, bucket policy, CORS và mức tương thích S3. |
+| ONE_DRIVE, ONE_DRIVE_CHINA, SHAREPOINT_DRIVE, SHAREPOINT_DRIVE_CHINA | Các implementation đi qua `AbstractOneDriveServiceBase` hoặc `AbstractSharePointServiceBase` tới `AbstractMicrosoftDriveService`, rồi kế thừa `AbstractProxyTransferService`. Lớp Microsoft có code cho list/get item, tạo, xóa, rename, copy, move, upload và download/proxy transfer cho tệp và thư mục. | Phản hồi 2xx, kể cả phản hồi chấp nhận yêu cầu copy, chưa tự chứng minh provider đã hoàn tất thao tác. Kết quả end-to-end còn phụ thuộc OAuth token, API permission, drive/site/list, tenant và cấu hình proxy. |
+
+## Quy tắc dùng ma trận
+
+- Source khởi tạo thành công chỉ chứng minh `testConnection()` không lỗi trong lúc khởi tạo. Xem [Storage source](./storage-sources).
+- Permission hợp lệ chỉ vượt qua lớp truy cập; adapter vẫn có thể không hỗ trợ operation. Xem [Thao tác tệp](./file-operations) và [Kiểm soát truy cập](./access-control).
+- Callback OnlyOffice chỉ gọi `uploadFile` khi adapter là `AbstractProxyTransferService`; S3-family và Microsoft-family đạt điều kiện kiểu này theo chuỗi kế thừa và có implementation `uploadFile`. Đây mới là điều kiện ở phía ZFile. Ghi tệp end-to-end còn cần secret, token/key hợp lệ, preview cho phép sửa, quyền `UPLOAD`, credential/policy hợp lệ và provider nhận dữ liệu thành công. Xem [Xem trước và tích hợp](./preview-and-integrations).
+- Preview image, audio/video, text, PDF, Office và OBJ được README xác nhận ở cấp sản phẩm; mapping định dạng và kết quả cho từng provider là **Chưa xác minh**.
+
+**Giới hạn xác minh:** Bảng xác nhận contract kế thừa và operation được triển khai trong code, không xác nhận credential, policy, CORS, API permission hay hành vi dịch vụ bên ngoài của từng cấu hình. Khi thêm provider hoặc thay đổi UI, kiểm tra adapter và chạy kiểm thử end-to-end theo provider thay vì dùng riêng quan hệ kế thừa làm cam kết vận hành.

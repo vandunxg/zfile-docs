@@ -1,0 +1,30 @@
+---
+title: Quy ước biên soạn tài liệu nội bộ
+sidebar_label: Quy ước biên soạn
+---
+
+# Quy ước biên soạn tài liệu nội bộ
+
+Tài liệu nội bộ giúp nhóm giải thích đúng hành vi ZFile, truy vết được mã nguồn và phân biệt dữ kiện đã xác minh với phần còn thiếu nguồn.
+
+## Cấu trúc trang miền nghiệp vụ
+
+Mỗi trang miền nghiệp vụ viết theo thứ tự `Why → What → How → Where in Code`. Phần nghiệp vụ đứng trước để BA, PM và người vận hành hiểu vai trò, tình huống sử dụng và quy tắc nghiệp vụ; phần **Ghi chú kỹ thuật** đứng sau để lập trình viên lần theo điểm vào, chuỗi lời gọi, tầng lưu trữ dữ liệu và tích hợp ngoài.
+
+Dùng các nhãn sau khi cần: **Yêu cầu nghiệp vụ**, **Quy tắc nghiệp vụ**, **Triển khai kỹ thuật**, **Chưa xác minh**. Không ghi một kết luận như sự thật nếu nguồn không chứng minh được.
+
+## Tham chiếu nguồn
+
+Mỗi quyền, trạng thái, giới hạn, API route, tên giao diện và điều kiện phải có nguồn. Tham chiếu mã nguồn ghi đủ `file`, `class` và `method` khi có thể; tham chiếu tài liệu sản phẩm ưu tiên liên kết nội bộ. Giữ nguyên tên API, field, enum, class, lệnh và mã lỗi trong backtick.
+
+Ví dụ: `FileOperatorCheckAspect.checkPermission()` kiểm tra quyền thao tác theo storage source. Đây là bằng chứng triển khai; chỉ gọi đó là quy tắc nghiệp vụ khi có nguồn cho yêu cầu tương ứng.
+
+## Diagram và kiểm tra
+
+Mỗi sơ đồ trả lời một câu hỏi cụ thể. Sequence diagram mô tả vai trò → API → service → database/storage; flowchart thể hiện quyết định nghiệp vụ; state diagram thể hiện vòng đời; ERD chỉ dùng khi quan hệ dữ liệu đã được đối chiếu từ nguồn. Hiện bộ tài liệu chưa có ERD đã xác minh. Không đưa cache, DTO hoặc helper vào sơ đồ nếu chúng không thay đổi quyết định của người đọc.
+
+Trước khi xuất bản, kiểm tra khả năng hiển thị của Mermaid, liên kết nội bộ, tham chiếu nguồn và các nhánh quyền, validation hoặc lỗi ảnh hưởng thao tác. Chạy `yarn build` từ thư mục gốc của repository tài liệu để kiểm tra Docusaurus. Đây là lệnh build tài liệu, không phải quy trình chạy hay kiểm thử backend ZFile.
+
+Với backend ZFile, lệnh build duy nhất hiện có căn cứ từ mã nguồn là `mvn clean package`. POM mặc định đặt `skipTests=true`, nên phải ghi rõ test bị bỏ qua; không mô tả build thành công như bằng chứng rằng test đã chạy hoặc ứng dụng đã khởi động. Các phần chưa có nguồn gồm ERD đã đối chiếu, quy trình chạy local đã kiểm chứng, `CONTRIBUTING`, mã kiểm thử và cấu hình Compose.
+
+Người mới nên đi từ [Lộ trình làm quen](../onboarding/start-here) đến [Đóng góp đầu tiên](../onboarding/first-contribution). Khi cập nhật tài liệu theo một thay đổi mã nguồn, dùng [Điều hướng mã nguồn](./code-navigation) để kiểm tra lại điểm vào và chuỗi xử lý.

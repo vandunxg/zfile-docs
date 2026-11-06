@@ -1,0 +1,51 @@
+---
+title: Bắt đầu đóng góp mã nguồn
+sidebar_label: Bắt đầu tại đây
+---
+
+# Bắt đầu đóng góp mã nguồn
+
+Bạn sẽ xác định được cấu trúc ZFile, build backend bằng lệnh có căn cứ trong mã nguồn và biết nên đọc phần nào trước khi sửa mã.
+
+Trước khi bắt đầu, đọc [Mục đích hệ thống](../business/core/system-purpose) và [Mô hình nghiệp vụ](../business/core/business-model). Sau đó dùng [Danh mục tính năng](../business/feature-catalog) để chọn đúng miền nghiệp vụ.
+
+## Chuẩn bị
+
+`pom.xml` yêu cầu Java 21 (`java.version`, `maven.compiler.source` và `maven.compiler.target`). Dự án dùng Maven, Spring Boot 3.3.2 và đóng gói `jar`. Thuộc tính `skipTests` trong POM mặc định là `true`.
+
+Tại thư mục gốc của repository mã nguồn ZFile, lệnh build backend duy nhất được xác nhận từ `pom.xml` là:
+
+```bash
+mvn clean package
+```
+
+Lệnh này mặc định bỏ qua test vì POM đặt `skipTests=true`. Do đó, build thành công không chứng minh test đã chạy hoặc ứng dụng khởi động được. Nguồn hiện tại chưa có mã kiểm thử, quy trình chạy local đã kiểm chứng, cấu hình Compose hoặc `CONTRIBUTING`; trang này không suy đoán lệnh khởi động hay quy trình đóng góp.
+
+## Đọc tài liệu theo thứ tự này
+
+1. [Business Core](../business/core/system-purpose): hiểu mục đích, đối tượng, quyền và luồng nghiệp vụ cốt lõi.
+2. [Tổng quan kiến trúc](../engineering/architecture-overview): hiểu bootstrap, các tầng chính và cách ZFile trừu tượng hóa storage.
+3. [Điều hướng mã nguồn](../engineering/code-navigation): lần từ endpoint qua service, mapper hoặc storage implementation.
+4. [Dữ liệu và cấu hình](../engineering/data-and-configuration): kiểm tra datasource, migration, profile và log.
+5. [Đóng góp đầu tiên](./first-contribution): chọn một thay đổi nhỏ và rà các phần bị ảnh hưởng, không giả định quy trình pull request chưa có nguồn.
+
+Trong mã nguồn, bắt đầu ở `ZfileApplication.java` và `src/main/resources/application.properties`, rồi vào `core/` hoặc `module/` theo miền đã chọn. Với chức năng storage source, xem `module/storage/context/StorageSourceContext.java`.
+
+## Cấu hình an toàn
+
+- SQLite là datasource mặc định; MySQL chỉ là khối cấu hình comment trong `application.properties`.
+- `application.properties` import `application-default.properties` và mặc định kích hoạt `prod`; profile prod tắt tài liệu API.
+- Không bật `zfile.debug` trên môi trường không tin cậy. `PUT /user/resetAdminPassword` chỉ hoạt động khi thuộc tính này là `true`.
+- Không commit credential, access token, mật khẩu datasource hay bản log chưa che dữ liệu nhạy cảm.
+
+## Khi debug
+
+Kiểm tra `zfile.log.path` trước. Mặc định log nằm tại `${user.home}/.zfile-v4/logs`; cấu hình Logback tách debug, info, warn và error. Với sự cố storage, lần theo `StorageSourceInitializer`, `StorageSourceContext` và implementation `AbstractBaseFileService` của loại storage đó. Với lỗi request, bắt đầu từ route controller và `GlobalExceptionHandler`.
+
+## Khi cần trợ giúp
+
+Tạo issue với phiên bản, môi trường/datasource, bước tái hiện, kết quả mong đợi và thực tế, cùng log đã che secret. Không gửi OAuth callback, token, password hoặc archive log nguyên trạng.
+
+Nguồn: `pom.xml`, `ZfileApplication.java`, `application.properties`, `application-prod.properties`, `UserController.java`, `logback-spring.xml`.
+
+Đọc tiếp: [Đóng góp đầu tiên](./first-contribution) để chọn phạm vi thay đổi, hoặc [Điều hướng mã nguồn](../engineering/code-navigation) để lần theo một chức năng cụ thể.

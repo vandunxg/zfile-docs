@@ -1,0 +1,5 @@
+schema_version: "1.1"
+name: quick-error-messages
+expected_outcome: |
+  Five short, natural Vietnamese UI messages for end users, placeholders intact,
+  no invented causes or promises, returned directly without a process report.

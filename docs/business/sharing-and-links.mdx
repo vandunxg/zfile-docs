@@ -1,0 +1,87 @@
+---
+title: Chia sẻ và liên kết
+sidebar_label: Chia sẻ và liên kết
+---
+
+# Chia sẻ và liên kết
+
+ZFile cho phép chia sẻ tệp cho khách qua share link, direct link, short link và proxy download. Phần đầu mô tả kết quả đối với khách; phần cuối chỉ nơi kiểm tra quy tắc trong mã nguồn.
+
+## Mục tiêu business
+
+- Cấp URL để khách truy cập tải nội dung mà không đi qua file operation thông thường của user.
+- Cho phép chủ sở hữu kiểm soát khả năng truy cập bằng mật khẩu, hạn dùng, Referer, rate limit, filter download và chữ ký URL.
+- Trả URL tải qua `302` hoặc để máy chủ trả stream khi storage source hỗ trợ proxy.
+
+## Actor và ownership
+
+| Actor/object | Ownership và trách nhiệm |
+| --- | --- |
+| Người dùng tạo link | Tạo share link, direct link hoặc short link từ storage source mà mình được phép sử dụng theo từng API. |
+| Khách truy cập | Dùng `shareKey`, direct/short URL hoặc proxy URL; phải thỏa policy của loại link đang dùng. |
+| Share link | Thuộc người tạo. Chỉ người tạo hoặc admin được xóa; người khác nhận `BIZ_STORAGE_SOURCE_ILLEGAL_OPERATION`. |
+| Storage source | Cung cấp URL tải bằng `getDownloadUrl()` hoặc stream bằng `downloadToStream()`; direct/short link chỉ tiếp tục khi storage source khởi tạo được và đang bật. |
+
+## Business objects/lifecycle
+
+| Object | Vòng đời hoặc dữ liệu business đã xác minh |
+| --- | --- |
+| Share link | Tạo bởi `POST /api/share/create` với `storageKey`, `sharePath`, `shareEntries`, `shareType`; `password`, `expireDate`, `shareKey` là tùy chọn. `sharePath` được lưu kèm user base path lúc tạo. Link hết hạn hoặc bị xóa không còn hợp lệ. |
+| Custom share key | Nếu không truyền, hệ thống sinh key 8 ký tự từ UUID. Key tự đặt dài 3-8 ký tự, chỉ gồm chữ cái, số, `_`, `-`, chưa tồn tại và người tạo cần `CUSTOM_SHARE_KEY` trên storage source đang bật. |
+| Direct link | Được tạo qua `POST /api/path-link/batch/generate`; đường dẫn lưu/URL có user base path. Không có expiry riêng trong direct-link handler. |
+| Short link | Được tạo qua `POST /api/short-link/batch/generate`, lưu `storageId`, full path và `shortKey`. `expireTime` tính bằng giây; `-1` tạo link vĩnh viễn. Với cùng storage và path, link vĩnh viễn đã có được tái sử dụng. Xóa storage source cũng xóa short link liên quan. |
+| Proxy URL | Chứa chữ ký gắn với storage ID, full path và expiry hoặc marker vĩnh viễn. |
+
+### Quản lý vòng đời link
+
+- Người dùng xem và xóa share link do mình tạo. Admin có thể xem và xóa share link của user khác; thao tác xóa vẫn kiểm tra người thực hiện là chủ sở hữu hoặc admin.
+- Người dùng quản lý short link của mình theo storage source và đường dẫn. Admin có luồng quản lý toàn hệ thống, có thể xuất danh sách short link ra Excel, xóa từng link hoặc xóa hàng loạt.
+- Khi xóa storage source, hệ thống dọn short link gắn với source đó. Share link và short link hết hạn chỉ ngừng phân giải; không suy ra rằng mọi bản ghi hết hạn được xóa ngay khỏi cơ sở dữ liệu.
+
+## Workflow
+
+1. Người dùng tạo link. API ghép user base path trước khi tạo URL cho direct link và short link; share link lưu base path lúc tạo.
+2. Khách mở URL. Với share link, hệ thống kiểm tra link tồn tại, chưa hết hạn và password khi thao tác cần nội dung. Với direct/short link, hệ thống kiểm tra cờ cho phép, storage source, disable-download filter, Referer và rate limit khi các cấu hình tương ứng bật.
+3. Nếu đạt policy, file service trả URL tải qua `getDownloadUrl()` và controller redirect `302`; tệp `.m3u8` của direct link trả nội dung playlist. Proxy gọi `downloadToStream()` để máy chủ trả stream tệp.
+4. Với direct/short link, hệ thống tăng bộ đếm download và ghi download log trong lúc xử lý request, trước khi client thực sự tải xong nội dung ở URL đích. Vì vậy số đếm và log phản ánh lần phân giải link, không chứng minh tải xuống đã hoàn tất.
+5. Nếu `recordDownloadLog=true`, direct/short link ghi audit gồm loại link, storage, path, short key, IP, Referer và User-Agent. Các redirect tải có header cấm cache. Admin có thể lọc log theo các trường này và khoảng thời gian, rồi xóa từng bản ghi, xóa theo danh sách ID hoặc xóa theo điều kiện lọc. Source đã khảo sát không có endpoint xuất download log.
+
+## Rules/exception
+
+| Rule hoặc ngoại lệ | Hành vi đã xác minh |
+| --- | --- |
+| Permission tạo link | `FileOperatorCheckAspect` hiện chỉ xử lý `StoragePermissionCheck` với action `LINK`; không áp dụng check này cho `SHARE_LINK` hoặc `SHORT_LINK`. Vì vậy chưa khẳng định permission này được enforce khi tạo share/short link. |
+| Share link hết hạn/password | `expireDate` phải ở tương lai. Không có `expireDate` thì runtime không kiểm tra hết hạn. Thao tác cần nội dung từ chối password thiếu/sai bằng `BIZ_SHARE_PASSWORD_ERROR` (`41036`). `GET /api/share/info/{shareKey}` không trả password. |
+| Share entries | Ở root, `shareEntries` lọc theo tên và loại file/thư mục. Dưới subpath, hệ thống gọi trực tiếp `fileList(relativePath)`. Download chỉ ghép `sharePath` với `path` rồi gọi `getDownloadUrl()`; chưa thấy kiểm tra riêng `path` thuộc `shareEntries` trước khi tải. |
+| Tạo và phân giải direct/short link | `showPathLink` và `showShortLink` chặn bước phân giải/tải link tương ứng, không chặn API sinh link. Vì vậy tắt cờ có thể để lại hoặc tạo ra URL nhưng URL đó không phân giải được. Lỗi short link: không được phép `41012`, hết hạn `41013`, không tồn tại `41014`; direct link bị chặn trả `BIZ_DIRECT_LINK_NOT_ALLOWED` (`41011`). |
+| Thời hạn short link | `expireTime` phải có trong `linkExpireTimes`, kể cả giá trị `-1`. Muốn cho phép link vĩnh viễn, cấu hình phải chứa `-1`; đây không phải ngoại lệ bỏ qua validation danh sách. |
+| Referer/rate limit | Referer có thể tắt, whitelist hoặc blacklist. Referer rỗng chỉ qua khi `refererAllowEmpty=true`; request bị chặn redirect đến forbidden URL. Rate limit chỉ hoạt động khi `linkLimitSecond` và `linkDownloadLimit` đều khác `null` và khác `0`; khóa giới hạn là client IP. |
+| Disable download | Nếu file hoặc parent path khớp rule disable-download, direct/short handler trả `302` đến forbidden URL. |
+| Proxy | Endpoint là `GET /pd/{storageKey}/**`; storage source phải là `AbstractProxyTransferService`, nếu không trả `BIZ_UNSUPPORTED_PROXY_DOWNLOAD`. URL luôn có `signature`, kể cả `proxyPrivate=false`. Với `proxyPrivate=true`, `proxyTokenTime` thiếu hoặc nhỏ hơn 1 mặc định là 1.800 giây. Chữ ký thiếu, không giải mã được, sai storage/path hoặc hết hạn trả `BIZ_INVALID_SIGNATURE` (`41002`); `filename` chứa `/` trả `BIZ_INVALID_FILE_NAME`. |
+
+### Ranh giới bảo mật của share download
+
+Trong luồng download qua share link đã khảo sát, hệ thống gọi lấy URL tải sau khi kiểm tra share link và password nhưng không quan sát thấy các bước kiểm tra source đang bật, filter download hoặc `shareEntries` như ở file operation và direct/short link. Đây là khoảng trống cần kiểm tra bảo mật, không phải hành vi được hỗ trợ để vượt kiểm soát. Không thiết kế tích hợp dựa trên việc share download bỏ qua các lớp này.
+
+**Chưa xác minh:** `showLinkBtn` và `allowPathLinkAnonAccess` có trong request cấu hình, nhưng luồng UI và enforcement runtime chưa nằm trong source đã khảo sát.
+
+## Scenario
+
+**Khách có `shareKey` hợp lệ nhưng không tải được tệp.** Trước hết kiểm tra link còn tồn tại/chưa hết hạn và password của thao tác cần nội dung. Nếu đang dùng direct/short link, tách lỗi "link không hợp lệ" khỏi trường hợp link hợp lệ nhưng bị policy chặn: storage source, disable-download ở file hoặc parent path, Referer và rate limit. Không suy ra rằng `shareEntries` cũng chặn download path, vì source download chưa có kiểm tra riêng đó.
+
+## Vị trí trong mã nguồn
+
+| Thành phần | Vai trò |
+| --- | --- |
+| `im.zhaojun.zfile.module.share.controller.ShareLinkController` | API tạo, đọc thông tin và xóa share link. |
+| `im.zhaojun.zfile.module.share.service.ShareLinkService` | Quản lý vòng đời share link. |
+| `im.zhaojun.zfile.module.share.service.ShareLinkFileService` | Kiểm tra và truy cập nội dung qua share link. |
+| `im.zhaojun.zfile.module.link.controller.DirectLinkController` | Tạo và xử lý direct link. |
+| `im.zhaojun.zfile.module.link.controller.ShortLinkController` | Tạo, quản lý và xử lý short link. |
+| `im.zhaojun.zfile.module.link.service.LinkDownloadService` | Áp dụng policy download cho direct/short link. |
+| `im.zhaojun.zfile.module.log.controller.DownloadLogManagerController` | Tra cứu và dọn lịch sử phân giải direct/short link; không có endpoint xuất download log trong source đã khảo sát. |
+| `im.zhaojun.zfile.module.link.controller.ShortLinkManagerController` | Quản lý và xuất danh sách short link ra Excel. |
+| `im.zhaojun.zfile.module.storage.controller.proxy.ProxyDownloadController` | Kiểm tra proxy request và stream tệp. |
+| `im.zhaojun.zfile.core.util.ProxyDownloadUrlUtils` | Tạo/đọc chữ ký URL proxy. |
+
+Đọc thêm: [Kiểm soát truy cập](./access-control) và [Quyết định truy cập và hiển thị](./core/access-and-visibility).

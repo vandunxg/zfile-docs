@@ -1,0 +1,60 @@
+---
+title: Các workflow cốt lõi
+sidebar_label: 4. Workflow cốt lõi
+---
+
+# Các quy trình cốt lõi
+
+Năm quy trình dưới đây nối trạng thái hệ thống, cấu hình quản trị và hành động của người dùng thành kết quả hoàn chỉnh.
+
+## 1. Cài đặt hệ thống lần đầu
+
+- **Khi nào xảy ra:** người vận hành mở một database mới có `installed=false`.
+- **Điều kiện:** bản ghi admin seed tồn tại và hệ thống chưa được cài đặt.
+- **Luồng thành công:** cập nhật thông tin admin, cấp quyền mặc định, lưu tên site và chuyển `installed=true` trong cùng transaction.
+- **Trường hợp bị chặn:** hệ thống đã cài đặt, thiếu admin seed hoặc cập nhật admin không thành công.
+- **Kết quả:** hệ thống chuyển sang trạng thái sẵn sàng cho quản trị; yêu cầu cài đặt tiếp theo bị từ chối.
+- **Vị trí trong mã nguồn:** `InstallController` -> `InstallService#install` -> `UserService#initAdminUser`.
+
+Đọc [Cài đặt và trạng thái hệ thống](../installation-and-system-state) để biết chi tiết transaction và trạng thái.
+
+## 2. Quản trị viên chuẩn bị nguồn lưu trữ và cấp người dùng
+
+- **Khi nào xảy ra:** quản trị viên cần đưa một backend lưu trữ vào ZFile.
+- **Điều kiện:** có session và role quản trị; adapter và thông tin kết nối hợp lệ.
+- **Luồng thành công:** lưu nguồn lưu trữ, khởi tạo file service, gọi `testConnection()`, bật nguồn; khi lưu người dùng, lưu danh sách `UserStorageSource` với `enable` và `permissions`.
+- **Trường hợp bị chặn:** thiếu adapter hoặc kiểm tra kết nối lỗi; nguồn không có trong context thì không xử lý được tệp.
+- **Kết quả:** người dùng có assignment đang bật nhận được nguồn đang bật trong danh sách; nguồn mới nhận quyền mặc định theo cấu hình hiện có.
+- **Vị trí trong mã nguồn:** `StorageSourceController#saveStorageItem` -> `StorageSourceService#saveStorageSource` -> `StorageSourceContext#init`.
+
+## 3. Người dùng duyệt và thao tác tệp
+
+- **Khi nào xảy ra:** người dùng chọn nguồn lưu trữ và đường dẫn.
+- **Điều kiện:** người dùng và assignment đang bật; thao tác có quyền tương ứng; mật khẩu và bộ lọc cho phép khi áp dụng.
+- **Luồng thành công:** controller tìm nguồn theo `storageKey`, lấy file service từ context, gọi `fileList(path)` hoặc method thao tác; `FileChain` xử lý danh sách trả về.
+- **Trường hợp bị chặn:** `storageKey` không tồn tại, thiếu quyền, mật khẩu sai hoặc provider không hỗ trợ thao tác.
+- **Kết quả:** người dùng xem hoặc thay đổi tệp trong phạm vi được phép.
+- **Vị trí trong mã nguồn:** `FileController`, `FileOperatorController`, `FileOperatorCheckAspect`, `AbstractBaseFileService`.
+
+## 4. Người dùng chia sẻ nội dung
+
+- **Khi nào xảy ra:** người dùng tạo share link, direct link hoặc short link.
+- **Điều kiện:** custom share key cần `CUSTOM_SHARE_KEY`; direct link cần quyền `LINK`. Quyền `SHARE_LINK` và `SHORT_LINK` hiện chưa được aspect enforce.
+- **Luồng thành công:** hệ thống lưu hoặc tạo URL từ nguồn lưu trữ, đường dẫn và cấu hình liên kết; share link có thể có mật khẩu và `expireDate`.
+- **Trường hợp bị chặn:** custom key sai định dạng hoặc trùng, expiry không hợp lệ, nguồn không sẵn sàng. `showPathLink` và `showShortLink` chặn lúc phân giải, không chặn lúc sinh URL.
+- **Kết quả:** người dùng nhận URL để gửi cho khách, nhưng URL chỉ sử dụng được khi policy lúc phân giải cho phép.
+- **Vị trí trong mã nguồn:** `ShareLinkService#createShareLink`, `ShareLinkController`, `DirectLinkController`, `ShortLinkController`.
+
+## 5. Khách truy cập, tải hoặc xem trước
+
+- **Khi nào xảy ra:** khách mở URL share/direct/short/proxy.
+- **Điều kiện:** link còn hợp lệ; password/chữ ký/policy cần thiết đạt; storage source đang sẵn sàng và policy download cho phép.
+- **Luồng thành công:** hệ thống lấy URL tải hoặc stream từ file service, sau đó redirect `302` hoặc trả stream. Xem trước Office qua share link tạo payload chỉ đọc.
+- **Trường hợp bị chặn:** link hết hạn/bị xóa, mật khẩu sai, chữ ký không hợp lệ, rate limit, Referer hoặc disable-download filter.
+- **Kết quả:** khách nhận tệp hoặc xem trước trong phạm vi policy của loại liên kết.
+- **Vị trí trong mã nguồn:** `ShareLinkFileService`, `LinkDownloadService`, `ProxyDownloadController`, `OnlyOfficeConfigService`.
+
+## Đọc sâu
+
+- [Storage source](../storage-sources), [Thao tác tệp](../file-operations), [Chia sẻ và liên kết](../sharing-and-links), [Xem trước và tích hợp](../preview-and-integrations).
+- [Quy tắc và tình huống thực tế](./business-rules-and-scenarios) để kiểm tra các điểm dễ hiểu sai của workflow.

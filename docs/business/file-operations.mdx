@@ -1,0 +1,82 @@
+---
+title: Thao tác tệp
+sidebar_label: Thao tác tệp
+---
+
+# Thao tác tệp
+
+Thao tác tệp giúp người dùng duyệt và thay đổi nội dung trong nguồn lưu trữ được cấp quyền. Phần cuối dành cho lập trình viên mới cần lần theo mã nguồn.
+
+## Mục tiêu business
+
+ZFile đưa yêu cầu duyệt, tạo thư mục, upload, xóa, đổi tên, di chuyển hoặc sao chép đến file service của đúng storage source. Kết quả chỉ đạt được khi source sẵn sàng, user có quyền cần thiết, password và filter cho phép khi áp dụng, và provider hỗ trợ thao tác đó.
+
+## Actor và ownership
+
+| Actor | Trách nhiệm và phạm vi đã xác minh |
+| --- | --- |
+| Người dùng | Chọn `storageKey` và path để duyệt hoặc thao tác tệp/thư mục trong phạm vi quyền được cấp. |
+| Quản trị viên | Cấp nguồn lưu trữ và quyền; không trực tiếp tham gia mọi thao tác tệp của người dùng. |
+
+## Business objects và lifecycle
+
+| Đối tượng | Vai trò | Vòng đời hoặc quan hệ đã xác minh |
+| --- | --- | --- |
+| `storageKey` | Định danh trong request để chọn storage source. | Được dùng để tìm `storageId`, rồi lấy file service từ `StorageSourceContext`. |
+| Tệp/thư mục | Nội dung người dùng duyệt hoặc thay đổi. | File service trả danh sách hoặc thực hiện thao tác theo path; sau delete, upload, rename hoặc move, hệ thống cố xóa OnlyOffice cache liên quan. |
+| `FileContext` | Ngữ cảnh của kết quả duyệt tệp. | Sau `fileList(path)`, `FileChain` chạy các command về access permission, folder password, hidden file, sort và download permission. |
+| Kết quả batch | Kết quả của từng item trong thao tác theo lô. | Với một số item không hợp lệ, controller trả fail cho item đó và tiếp tục các item khác trong batch. |
+
+## Workflow
+
+### Duyệt tệp
+
+- **Khi nào xảy ra:** người dùng chọn một nguồn lưu trữ và đường dẫn cần xem.
+- **Điều kiện:** `storageKey` tồn tại; người dùng và liên kết `UserStorageSource` đang bật; các quy tắc quyền, mật khẩu và bộ lọc cho phép truy cập.
+- **Luồng thành công:** `FileController#list` tìm `storageId` bằng `storageKey`, lấy file service từ `StorageSourceContext`, gọi `fileList(path)`, rồi chạy `FileChain` theo thứ tự quyền truy cập, mật khẩu thư mục, lọc mục ẩn, sắp xếp và quyền tải xuống.
+- **Kết quả:** controller trả `FileInfoResult` chứa danh sách đã được xử lý bởi chain.
+
+### Thay đổi tệp hoặc thư mục
+
+| Thao tác | Khi nào xảy ra | Luồng thành công | Kết quả |
+| --- | --- | --- | --- |
+| Tạo thư mục | `POST /api/file/operator/mkdir` | Gọi `newFolder`. | Thư mục được tạo nếu provider và rule cho phép. |
+| Upload | `POST /api/file/operator/upload/file` | Gọi `getUploadUrl`. | ZFile trả thông tin cần thiết để tải tệp lên theo cơ chế của provider. |
+| Xóa theo lô | `POST /api/file/operator/delete/batch` | Gọi `deleteFile` hoặc `deleteFolder` cho từng item. | Mỗi item có kết quả riêng. |
+| Đổi tên | `POST /api/file/operator/rename/file` hoặc `rename/folder` | Gọi `renameFile` hoặc `renameFolder`. | Tên đối tượng được cập nhật khi thao tác thành công. |
+| Di chuyển | `POST /api/file/operator/move/file` hoặc `move/folder` | Gọi `moveFile` hoặc `moveFolder`. | Mỗi item hợp lệ được chuyển đến đích. |
+| Sao chép | `POST /api/file/operator/copy/file` hoặc `copy/folder` | Gọi `copyFile` hoặc `copyFolder`. | Mỗi item hợp lệ được sao chép đến đích. |
+
+- **Điều kiện chung:** `FileOperatorController` lấy file service theo `storageKey`; thao tác cần quyền tương ứng khi không phải `AVAILABLE`. Tạo thư mục, upload, đổi tên, di chuyển và sao chép đi qua `@CheckPassword`; move/copy kiểm tra cả đường dẫn nguồn và đích.
+- **Kết quả chung:** provider quyết định khả năng thực hiện cuối cùng. `FileOperatorCheckAspect` cố xóa OnlyOffice cache sau delete, upload, rename hoặc move; lỗi xóa cache chỉ được log, không ném lại.
+
+## Rules và exception
+
+| Điều kiện | Kết quả |
+| --- | --- |
+| `storageKey` không tồn tại khi duyệt tệp | `FileController#list` từ chối bằng `InvalidStorageSourceBizException`. |
+| Số phần tử nguồn và đích của `moveFile()` khác nhau | Request bị từ chối với `BIZ_BAD_REQUEST`. |
+| Di chuyển hoặc sao chép tệp/thư mục vào thư mục con của chính đối tượng | Item đó nhận kết quả fail; controller tiếp tục xử lý item khác trong batch. |
+| Xóa batch và password của một path không đúng | Item đó nhận kết quả fail với thông báo `密码错误` từ controller. |
+| User, liên kết storage source không bật hoặc thiếu permission cần thiết | `FileOperatorCheckAspect#allowAccess` từ chối thao tác theo quy tắc ở [Kiểm soát truy cập](./access-control). |
+| Endpoint có `@DemoDisable` | Annotation xuất hiện trên các endpoint thay đổi dữ liệu; hành vi chi tiết chưa được xác minh. |
+
+## Scenario
+
+Người dùng chọn một storage source và yêu cầu di chuyển nhiều tệp. Controller lấy file service bằng `storageKey`, còn aspect kiểm tra quyền thao tác. `@CheckPassword` kiểm tra password ở source và đích. Nếu danh sách nguồn và đích không cùng số phần tử, request bị từ chối bằng `BIZ_BAD_REQUEST`. Nếu một mục tiêu nằm trong thư mục con của chính đối tượng nguồn, item đó fail nhưng các item khác trong batch vẫn tiếp tục. Khi một thao tác thành công, hệ thống cố xóa OnlyOffice cache liên quan mà không làm thao tác thất bại nếu xóa cache lỗi.
+
+## Vị trí trong mã nguồn
+
+| Vai trò | Vị trí |
+| --- | --- |
+| Entry point duyệt tệp | `im.zhaojun.zfile.module.storage.controller.file.FileController` |
+| Entry point thao tác thay đổi | `im.zhaojun.zfile.module.storage.controller.file.FileOperatorController` |
+| Chuỗi xử lý danh sách tệp | `im.zhaojun.zfile.module.storage.chain.FileChain` |
+| Contract file service | `im.zhaojun.zfile.module.storage.service.base.BaseFileService` |
+| Kiểm tra quyền và xóa cache OnlyOffice | `im.zhaojun.zfile.module.storage.aspect.FileOperatorCheckAspect` |
+| Kiểm tra password theo path | `im.zhaojun.zfile.module.storage.aspect.CheckPasswordAspect` |
+
+## Đọc tiếp
+
+- [Storage source](./storage-sources) giải thích cách file service được khởi tạo.
+- [Kiểm soát truy cập](./access-control) giải thích permission, password và filter.

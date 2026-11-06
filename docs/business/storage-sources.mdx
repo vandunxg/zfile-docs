@@ -1,0 +1,115 @@
+---
+title: Storage source
+sidebar_label: Storage source
+---
+
+# Storage source
+
+Nguồn lưu trữ (`storage source`) giúp quản trị viên kết nối ZFile với một backend lưu trữ để người dùng được cấp quyền có thể làm việc với tệp. Phần cuối dành cho lập trình viên mới cần lần theo mã nguồn.
+
+## Mục tiêu business
+
+Mỗi storage source đại diện cho một cấu hình kết nối đến một backend lưu trữ. Khi cấu hình được lưu và khởi tạo thành công, ZFile có thể dùng file service tương ứng để xử lý tệp. Cờ `StorageSource.enable` điều khiển việc source xuất hiện trong danh sách và việc direct/short link có tiếp tục phân giải source hay không. Cờ này không phải cơ chế thu hồi đáng tin cậy đối với thao tác tệp thông thường đã biết `storageKey`.
+
+## Actor và ownership
+
+| Actor | Trách nhiệm và phạm vi sở hữu đã xác minh |
+| --- | --- |
+| Quản trị viên | Tạo, cập nhật, bật, tắt, sao chép, xóa và sắp xếp storage source. |
+| Người dùng | Nhận source đang bật trong danh sách khi có liên kết `UserStorageSource` đang bật; thao tác tệp còn phụ thuộc permission, password, filter và provider. |
+| Hệ thống | Khởi tạo, giữ hoặc hủy file service theo storage source; khi có source mới, áp dụng default permission hiện có cho các user. |
+
+## Business objects và lifecycle
+
+| Đối tượng | Vai trò | Vòng đời đã xác minh |
+| --- | --- | --- |
+| Storage source | Cấu hình backend lưu trữ, có `id`, `key`, type và parameter. | Được lưu hoặc cập nhật, khởi tạo file service và kiểm tra kết nối; có thể bật/tắt, sao chép, sắp xếp hoặc xóa. |
+| File service | Implementation xử lý tệp cho một storage source. | `StorageSourceContext` chọn theo `StorageTypeEnum`, nạp parameter, kiểm tra kết nối và cache theo `storageId`/`storageKey`; bị hủy khi source bị cập nhật hoặc xóa. |
+| `UserStorageSource` | Liên kết quyền giữa user và storage source. | Source mới nhận default permission; khi source bị xóa, listener của `StorageSourceDeleteEvent` xóa các liên kết liên quan. |
+
+## Workflow
+
+### Lưu và đưa storage source vào sử dụng
+
+- **Khi nào xảy ra:** quản trị viên cần tạo mới hoặc cập nhật một backend lưu trữ.
+- **Điều kiện:** có implementation phù hợp với `StorageTypeEnum` và thông tin kết nối cho phép `testConnection()` thành công.
+- **Luồng thành công:** controller gọi `StorageSourceService#saveStorageSource`; service lưu metadata và parameter. Với nguồn đã tồn tại, context cũ bị hủy trước khi lưu. Sau đó `StorageSourceContext#init` chọn file service, nạp parameter, gọi `init(...)` và `testConnection()`. Kết nối thành công thì service được cache theo `storageId` và `storageKey`. Với nguồn mới, service gọi `UserStorageSourceService#addDefaultPermissionsForAllUsersInStorageSource`.
+- **Kết quả:** nguồn lưu trữ có file service sẵn sàng; khi nguồn được bật, người dùng được cấp có thể nhận nguồn trong danh sách của mình.
+
+`testConnection()` thử lấy danh sách tại root path. Đây là bước xác nhận kết nối trong luồng khởi tạo, không phải cam kết mọi thao tác tệp đều được provider hỗ trợ.
+
+### Quản trị source đã có
+
+| Khi nào xảy ra | Luồng thành công | Kết quả |
+| --- | --- | --- |
+| Bật hoặc tắt source | Cập nhật trường `enable`. | Source tắt không còn trong danh sách source khả dụng và direct/short link từ chối phân giải source đó. Đây không phải lệnh thu hồi toàn bộ thao tác theo `storageKey`. |
+| Sao chép source | Tạo source mới từ cấu hình nguồn, sao chép event-driven configuration liên quan rồi khởi tạo context mới. | Có một source mới với context riêng. |
+| Sắp xếp source | Cập nhật `orderNum` của các source. | Thứ tự source được lưu lại. |
+| Xóa source | Xóa metadata, hủy file service trong context và phát `StorageSourceDeleteEvent`. | Source không còn file service; listener xóa các liên kết user-storage liên quan. |
+
+## Rules và exception
+
+| Điều kiện | Kết quả |
+| --- | --- |
+| Không tìm được implementation cho `StorageTypeEnum` | Khởi tạo thất bại với `InvalidStorageSourceBizException`. |
+| `testConnection()` không thành công | Khởi tạo thất bại với `InitializeStorageSourceBizException`. |
+| `StorageSourceContext#getByStorageId` không có file service tương ứng | Ném `InvalidStorageSourceBizException`. |
+| Xóa storage source không tồn tại | `StorageSourceService#deleteById` ném `BIZ_STORAGE_NOT_FOUND`. |
+| Lấy source đã bật mà không có `userId` | `StorageSourceService#findAllEnableOrderByOrderNum` trả danh sách rỗng. |
+| Lấy source đã bật cho user hợp lệ | Danh sách chỉ gồm source đang bật và đã được cấp cho user đó. |
+
+### Thiết lập theo provider
+
+Các endpoint hỗ trợ thiết lập giúp quản trị viên lấy token hoặc tìm định danh provider trước khi lưu storage source. Chúng không tự tạo source và không thay thế bước `saveStorageSource` cùng `testConnection()`.
+
+| Nhóm provider | Quy trình hỗ trợ đã xác minh | Kết quả dùng để cấu hình |
+| --- | --- | --- |
+| Google Drive | Bắt đầu OAuth bằng `clientId`, `clientSecret`, `redirectUri`; callback nhận `code`, giải mã các tham số client từ `state`, đổi code lấy token và hiển thị kết quả. | Token có thể được dùng để cấu hình source; helper `/gd/drives` dùng access token để lấy danh sách shared drive gồm tên và ID. |
+| OneDrive quốc tế và OneDrive Trung Quốc | Endpoint authorize tạo URL OAuth tương ứng. Callback nhận `code`, giải mã tham số client từ `state`, đổi code lấy access token/refresh token và hiển thị kết quả. | Token và thông tin ứng dụng được đưa vào cấu hình source trước khi lưu. |
+| SharePoint và SharePoint Trung Quốc | Helper dùng access token và loại môi trường để tìm site, danh sách trong site, domain prefix hoặc site ID. | Quản trị viên chọn đúng site/list và đưa định danh vào cấu hình SharePoint. |
+| S3-compatible | Helper dùng endpoint, access key, secret key và region để lấy danh sách bucket; helper CORS đọc cấu hình CORS của bucket đã chọn. | Bucket và CORS hiện tại hỗ trợ hoàn thiện biểu mẫu cấu hình; kết quả helper chưa chứng minh upload/download end-to-end. |
+
+OAuth callback chỉ hoàn tất bước cấp token. Trong hai callback trên, `state` mang cấu hình client ở dạng Base64; controller không đối chiếu `state` với một giá trị lưu trong session. Không nên xem callback này là bằng chứng đã có cơ chế chống giả mạo request bằng `state`. Storage source chỉ sẵn sàng sau khi cấu hình được lưu, adapter khởi tạo và `testConnection()` thành công. Quyền API, redirect URI, CORS, endpoint và policy phía provider vẫn phải phù hợp với môi trường thực tế.
+
+### README thư mục, password và filter
+
+Ba nhóm cấu hình mở rộng đều thuộc một storage source và có endpoint đọc danh sách hiện tại trước khi lưu:
+
+| Cấu hình | Hành vi nghiệp vụ | Lifecycle khi lưu |
+| --- | --- | --- |
+| README thư mục | Ghép biểu thức đường dẫn với nội dung Markdown; hỗ trợ đường dẫn `relative`/`absolute` và vị trí `top`/`bottom`/`dialog`. Hệ thống dùng rule đầu tiên khớp đường dẫn. Khi bật compatibility mode, hệ thống thử đọc `readme.md` trong thư mục thay vì rule đã lưu. | `ReadmeConfigService#batchSave` xóa toàn bộ README config cũ rồi chèn danh sách gửi lên trong cùng transaction. Gửi danh sách rỗng nghĩa là xóa hết cấu hình README của source. |
+| Password theo đường dẫn | Yêu cầu password khi path khớp rule, trừ user có `IGNORE_PASSWORD`. | `PasswordConfigService#batchSave` thay thế toàn bộ danh sách cũ trong transaction; ID từ request bị bỏ và `storageId` được gán lại. |
+| Filter theo đường dẫn | Đánh dấu hidden, chặn truy cập hoặc chặn download theo mode và biểu thức; `IGNORE_HIDDEN` bỏ qua việc khớp filter. | `FilterConfigService#batchSave` thay thế toàn bộ danh sách cũ trong transaction; gửi danh sách rỗng sẽ xóa hết filter của source. |
+
+Vì đây là cơ chế thay thế toàn bộ, client quản trị phải gửi danh sách hoàn chỉnh cần giữ lại, không chỉ item vừa thêm hoặc sửa. Khi storage source bị xóa, listener xóa các README/password/filter liên quan; khi source được sao chép, các cấu hình này cũng được sao chép sang source mới.
+
+### Phạm vi của `enable`
+
+- `findAllEnableOrderByOrderNum(userId)` chỉ trả source vừa bật vừa thuộc danh sách source đang bật của user. Đây là cơ chế hiển thị/chọn source.
+- `LinkDownloadService` từ chối direct link và short link nếu storage source tắt.
+- Các controller thao tác tệp có thể phân giải file service trực tiếp từ `StorageSourceContext` bằng `storageKey`. `FileOperatorCheckAspect` kiểm tra user đang bật, liên kết `UserStorageSource.enable` và permission của operation, nhưng không kiểm tra `StorageSource.enable`.
+- Do đó, tắt source không bảo đảm chặn request thao tác tệp thông thường đã biết key và vẫn phân giải được file service trong context. Muốn thu hồi quyền loại này, phải cập nhật `UserStorageSource.enable`/permission hoặc dùng biện pháp vận hành làm file service không còn khả dụng; không nên dùng riêng `StorageSource.enable` như một công tắc bảo mật.
+
+## Scenario
+
+Quản trị viên tạo một source cho backend lưu trữ mới. Với provider cần OAuth hoặc định danh từ xa, quản trị viên hoàn tất callback/discovery trước rồi đưa token và định danh vào cấu hình. Hệ thống lưu cấu hình, chọn file service theo type và gọi `testConnection()`. Nếu kiểm tra thành công, file service được đặt trong `StorageSourceContext`; source mới nhận default permission cho các user theo cấu hình hiện có. Khi source được bật, chỉ user có assignment phù hợp mới nhận được source trong danh sách. Nếu kiểm tra kết nối lỗi, quá trình khởi tạo dừng với `InitializeStorageSourceBizException`.
+
+## Vị trí trong mã nguồn
+
+| Vai trò | Vị trí |
+| --- | --- |
+| Entry point quản trị | `im.zhaojun.zfile.module.storage.controller.base.StorageSourceController` |
+| Lưu, xóa, sao chép và sắp xếp | `im.zhaojun.zfile.module.storage.service.StorageSourceService` |
+| Khởi tạo, tra cứu và hủy file service | `im.zhaojun.zfile.module.storage.context.StorageSourceContext` |
+| Kiểm tra kết nối và thao tác provider | `im.zhaojun.zfile.module.storage.service.base.AbstractBaseFileService` |
+| Cấp default permission cho source mới | `im.zhaojun.zfile.module.user.service.UserStorageSourceService` |
+| OAuth Google Drive/OneDrive | `im.zhaojun.zfile.module.storage.controller.callback.GoogleDriveCallbackController`, `OneDriveCallbackController` |
+| Discovery S3/Google Drive/SharePoint | `im.zhaojun.zfile.module.storage.controller.helper.S3HelperController`, `GoogleDriveHelperController`, `SharePointHelperController` |
+| README thư mục | `im.zhaojun.zfile.module.readme.service.ReadmeConfigService` |
+| Password/filter full replacement | `im.zhaojun.zfile.module.password.service.PasswordConfigService`, `im.zhaojun.zfile.module.filter.service.FilterConfigService` |
+
+## Đọc tiếp
+
+- [Thao tác tệp](./file-operations) dùng file service đã được storage source khởi tạo.
+- [Kiểm soát truy cập](./access-control) giải thích điều kiện user được dùng storage source.
+- [Ma trận khả năng provider](./provider-capability-matrix) phân biệt implementation trong code với khả năng end-to-end.

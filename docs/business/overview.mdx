@@ -1,0 +1,59 @@
+---
+title: Tổng quan sản phẩm
+sidebar_label: Tổng quan sản phẩm
+---
+
+# Tổng quan sản phẩm
+
+ZFile là ứng dụng quản lý tệp trực tuyến cho cá nhân và nhóm nhỏ. Hệ thống hợp nhất nhiều storage source để người dùng duyệt, xem trước và chia sẻ tệp từ một giao diện.
+
+Trang này dành cho BA, PM, người vận hành và thành viên mới. Developer có thể dùng [Bản đồ domain](./domain-map) để bắt đầu đọc source code.
+
+## Vì sao có ZFile?
+
+Khi tệp nằm trên nhiều dịch vụ lưu trữ, người dùng cần một nơi để truy cập và quản lý chúng. README của ZFile nêu các storage source được hỗ trợ, gồm S3, OneDrive, SharePoint, Google Drive, local storage, FTP và SFTP.
+
+## ZFile cung cấp những gì?
+
+Các khả năng dưới đây được xác minh từ `zfile/README.md` và source backend:
+
+| Nhóm khả năng | Mô tả | Nguồn tham chiếu |
+| --- | --- | --- |
+| Storage source | Khai báo, cấu hình, khởi tạo và sắp xếp các backend lưu trữ. | `StorageSourceService` |
+| Duyệt và thao tác tệp | Hiển thị danh sách tệp/thư mục; tạo thư mục, tải lên, xóa, đổi tên, di chuyển và sao chép. | `FileController`, `FileOperatorController` |
+| Kiểm soát truy cập | Giới hạn thao tác theo user và storage source; kiểm tra password theo đường dẫn khi endpoint được đánh dấu. | `FileOperatorCheckAspect`, `CheckPasswordAspect` |
+| Chia sẻ và liên kết | Tạo share link, direct link và short link cho tệp; một số liên kết có thể chịu ảnh hưởng bởi cấu hình hệ thống. | `ShareLinkService`, `LinkDownloadService` |
+| Xem trước | README xác nhận khả năng preview image, audio/video, text, PDF, Office và OBJ. | `README.md`, module `onlyoffice` |
+| User và quản trị | Đăng nhập, session, phân quyền storage source và các thiết lập quản trị. | `UserController`, `UserStorageSourceService` |
+
+## Actors
+
+| Actor | Vai trò đã xác minh | Domain tương tác chính |
+| --- | --- | --- |
+| Quản trị viên | Quản lý storage source, user và cấu hình hệ thống. `UserController` trả về trạng thái admin sau khi đăng nhập. | Storage source, Identity & administration |
+| Người dùng đã đăng nhập | Duyệt storage source được cấp, thao tác tệp nếu có quyền và tạo share link cho tệp. | File operations, Access control, Sharing & links |
+| Người dùng ẩn danh | Request không có session được ánh xạ về anonymous user ID `2`; có thể duyệt nguồn nếu user này có assignment phù hợp. | File operations, Access control |
+| Khách truy cập qua liên kết | Có thể truy cập liên kết khi link, mật khẩu, chữ ký và policy tương ứng hợp lệ. | Sharing & links |
+
+## Ranh giới sản phẩm
+
+ZFile điều phối quyền, cấu hình và thao tác tệp; mỗi storage provider thực hiện các tác vụ trên backend lưu trữ tương ứng thông qua implementation của `AbstractBaseFileService`.
+
+Các khả năng phụ thuộc vào loại storage source hoặc system configuration không được xem là hành vi mặc định của mọi bản cài đặt. Ví dụ, `LinkDownloadService.handlerDirectLink()` chỉ xử lý direct link khi `showPathLink` được bật.
+
+## Đọc tiếp
+
+- Xem [Bản đồ domain](./domain-map) để biết ranh giới và điểm vào source code.
+- Xem [Thuật ngữ](./glossary) để dùng đúng nghĩa của các khái niệm trong tài liệu.
+
+## Nguồn
+
+- `zfile/README.md`, mục `主要特性`.
+- `im.zhaojun.zfile.module.storage.service.StorageSourceService`.
+- `im.zhaojun.zfile.module.storage.controller.file.FileController`.
+- `im.zhaojun.zfile.module.storage.controller.file.FileOperatorController`.
+- `im.zhaojun.zfile.module.storage.aspect.FileOperatorCheckAspect`.
+- `im.zhaojun.zfile.module.storage.aspect.CheckPasswordAspect`.
+- `im.zhaojun.zfile.module.share.service.ShareLinkService`.
+- `im.zhaojun.zfile.module.link.service.LinkDownloadService`.
+- `im.zhaojun.zfile.module.user.controller.UserController`.

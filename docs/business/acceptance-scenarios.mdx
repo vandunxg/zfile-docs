@@ -1,0 +1,213 @@
+---
+title: Kịch bản chấp nhận
+sidebar_label: Kịch bản chấp nhận
+---
+
+# Kịch bản chấp nhận
+
+Các kịch bản này chuyển quy tắc nghiệp vụ đã xác minh thành kết quả có thể kiểm tra. Chúng không thay thế kiểm thử khả năng của từng provider; xem [Ma trận khả năng provider](./provider-capability-matrix).
+
+## Cài đặt hệ thống
+
+### Cài đặt lần đầu thành công
+
+**Given** `installed=false` và bản ghi admin seed tồn tại  
+**When** người cài đặt gửi tên site, username và password  
+**Then** hệ thống cập nhật admin, cấp quyền mặc định, lưu tên site và đặt `installed=true` trong cùng transaction.
+
+### Không cho cài đặt lại
+
+**Given** `installed=true`  
+**When** client gửi lại yêu cầu cài đặt  
+**Then** hệ thống trả `BIZ_SYSTEM_ALREADY_INIT` và không dùng luồng này để đổi admin hoặc tên site.
+
+Nguồn: [Cài đặt và trạng thái hệ thống](./installation-and-system-state).
+
+## Storage và quyền
+
+### User duyệt storage source đã được cấp
+
+**Given** user đang bật, có `UserStorageSource` bật và storage source đang bật  
+**When** user duyệt source với operation `AVAILABLE`  
+**Then** lớp permission cho phép tiếp tục mà không cần permission thao tác riêng  
+**And** outcome cuối cùng vẫn phụ thuộc password, filter và adapter nếu các lớp đó áp dụng.
+
+Nguồn: [Kiểm soát truy cập](./access-control), [Storage source](./storage-sources).
+
+### Anonymous duyệt bằng assignment của user ID 2
+
+**Given** request không có login ID nên `ZFileAuthUtil` dùng anonymous user ID `2`  
+**And** user ID `2` đang bật  
+**And** user ID `2` có `UserStorageSource` đang bật cho source  
+**When** request duyệt nội dung với operation `AVAILABLE`  
+**Then** lớp permission dùng user ID `2` và assignment của user này, không bỏ qua kiểm tra quyền  
+**And** password, filter và provider vẫn có thể thay đổi outcome.
+
+Nguồn: `ZFileAuthUtil#getCurrentUser`, `ZFileAuthUtil#getCurrentUserId`, `FileOperatorCheckAspect#allowAccess`, [Kiểm soát truy cập](./access-control).
+
+### User bị chặn khi assignment tắt
+
+**Given** user hoặc `UserStorageSource` bị tắt  
+**When** user gọi file operation  
+**Then** hệ thống từ chối operation trước khi permission thao tác quyết định outcome.
+
+Nguồn: [Quyết định truy cập và hiển thị](./core/access-and-visibility).
+
+### IP hoặc User-Agent bị blocklist chặn toàn cục
+
+**Given** IP client hoặc `User-Agent` khớp blocklist trong system config  
+**When** client gọi một URL nằm dưới `/*`  
+**Then** `SecurityFilter` trả HTTP `403`  
+**And** request không đi tiếp đến controller, assignment, permission, password hoặc filter theo path.
+
+Nguồn: `SecurityFilter#doFilter`, [Kiểm soát truy cập](./access-control).
+
+### Source bị tắt nhưng ordinary operation không kiểm tra cờ source
+
+**Given** `StorageSource.enable=false`, user đang bật và `UserStorageSource.enable=true`  
+**And** user gọi một URL đã biết thay vì tìm source qua danh sách discovery  
+**When** request đi qua ordinary `FileOperatorCheckAspect#allowAccess`  
+**Then** aspect không từ chối chỉ vì `StorageSource.enable=false`  
+**And** outcome vẫn phụ thuộc permission thao tác, password, filter, trạng thái file service và các kiểm tra riêng của endpoint.
+
+**Caveat implementation:** source bị ẩn khỏi discovery không phải cơ chế thu hồi truy cập tuyệt đối.
+
+Nguồn: `StorageSourceMapper#findUserEnableList`, `FileOperatorCheckAspect#allowAccess`, [Kiểm soát truy cập](./access-control).
+
+## Thao tác tệp
+
+### Batch move có item không hợp lệ
+
+**Given** batch move có số phần tử nguồn và đích bằng nhau  
+**And** một item có đích là thư mục con của chính nó  
+**When** user gửi batch move  
+**Then** item đó có kết quả fail  
+**And** hệ thống tiếp tục xử lý các item khác trong batch.
+
+Nguồn: [Thao tác tệp](./file-operations), [Quy tắc và tình huống thực tế](./core/business-rules-and-scenarios).
+
+### Batch move có số nguồn và đích khác nhau
+
+**Given** request move có số phần tử nguồn khác số phần tử đích  
+**When** user gửi request  
+**Then** request bị từ chối với `BIZ_BAD_REQUEST`.
+
+Nguồn: [Thao tác tệp](./file-operations).
+
+### Lưu lại password/filter thay thế toàn bộ rule
+
+**Given** nguồn lưu trữ đang có nhiều password hoặc filter rule  
+**When** quản trị viên lưu một danh sách mới chỉ chứa một phần rule cũ  
+**Then** service xóa toàn bộ danh sách cũ và chỉ chèn danh sách mới trong transaction  
+**And** rule bị bỏ khỏi request không còn tồn tại.
+
+Nguồn: `PasswordConfigService#batchSave`, `FilterConfigService#batchSave`, [Storage source](./storage-sources).
+
+## Danh tính và quản trị
+
+### Cập nhật người dùng thay thế toàn bộ assignment
+
+**Given** người dùng đang được cấp nguồn A và B  
+**When** quản trị viên cập nhật người dùng với danh sách chỉ có nguồn A  
+**Then** assignment cũ bị xóa trước khi lưu danh sách mới  
+**And** người dùng không còn assignment với nguồn B.
+
+### Callback SSO sai state
+
+**Given** người dùng bắt đầu đăng nhập SSO và hệ thống lưu `state` trong session  
+**When** callback thiếu `state` hoặc có giá trị không khớp  
+**Then** hệ thống dừng luồng trước khi đổi authorization code lấy token.
+
+### User bị tắt vẫn có thể tạo session qua SSO
+
+**Given** username từ SSO đã tồn tại nhưng user đang bị tắt  
+**When** callback SSO hoàn tất hợp lệ  
+**Then** source hiện tại vẫn gọi `StpUtil.login(userId)`  
+**And** file operation về sau bị `FileOperatorCheckAspect` từ chối vì user không bật.
+
+**Caveat implementation:** đây là hành vi đọc từ source, không phải yêu cầu nghiệp vụ cho phép user bị tắt đăng nhập.
+
+Nguồn: [Danh tính và quản trị](./identity-and-administration).
+
+## Chia sẻ và download
+
+### Khách mở share link còn hạn với password đúng
+
+**Given** share link tồn tại, chưa hết hạn và nội dung yêu cầu password  
+**When** khách cung cấp password đúng để lấy nội dung  
+**Then** luồng share tiếp tục đến file service  
+**And** outcome download/preview vẫn phụ thuộc policy và provider.
+
+Nguồn: [Chia sẻ và liên kết](./sharing-and-links).
+
+### Direct link bị chặn bởi download filter
+
+**Given** direct link hợp lệ và storage source đã khởi tạo, đang bật  
+**And** file hoặc parent path khớp disable-download filter  
+**When** khách tải qua direct link  
+**Then** hệ thống redirect đến forbidden URL thay vì trả URL tải.
+
+Nguồn: [Chia sẻ và liên kết](./sharing-and-links).
+
+### Permission SHARE_LINK hiện không được enforce
+
+**Given** user không có permission `SHARE_LINK`  
+**And** request tạo share link gọi endpoint có `@StoragePermissionCheck(action = SHARE_LINK)`  
+**When** `FileOperatorCheckAspect#annotationCheck` xử lý annotation  
+**Then** aspect cho request đi tiếp mà không gọi `allowAccess` cho `SHARE_LINK`.
+
+**Caveat implementation:** kịch bản này chỉ xác nhận permission không được aspect enforce. Validation hoặc điều kiện khác vẫn có thể làm request thất bại; đây không phải yêu cầu nghiệp vụ cho phép tạo share link không cần quyền.
+
+Nguồn: `ShareLinkController#createShareLink`, `FileOperatorCheckAspect#annotationCheck`, [Ma trận quyền](./permission-matrix).
+
+### Permission SHORT_LINK hiện không được enforce
+
+**Given** user không có permission `SHORT_LINK`  
+**And** request tạo short link gọi endpoint có `@StoragePermissionCheck(action = SHORT_LINK)`  
+**When** `FileOperatorCheckAspect#annotationCheck` xử lý annotation  
+**Then** aspect cho request đi tiếp mà không gọi `allowAccess` cho `SHORT_LINK`.
+
+**Caveat implementation:** validation hoặc điều kiện khác của endpoint vẫn có thể làm request thất bại; kịch bản chỉ khẳng định permission `SHORT_LINK` không được aspect này enforce, không khẳng định tạo link thành công.
+
+Nguồn: `ShortLinkController#generatorShortLink`, `FileOperatorCheckAspect#annotationCheck`, [Ma trận quyền](./permission-matrix).
+
+### Short link vĩnh viễn chưa được cấu hình
+
+**Given** người dùng chọn `expireTime=-1`  
+**And** `linkExpireTimes` không chứa `-1`  
+**When** API tạo short link kiểm tra thời hạn  
+**Then** request bị từ chối trước khi đi vào nhánh tạo link vĩnh viễn.
+
+Nguồn: `ShortLinkService#generateShortLink`, `ShortLinkService#validateExpireTime`, [Chia sẻ và liên kết](./sharing-and-links).
+
+## OnlyOffice
+
+### Callback không ghi lại khi thiếu secret
+
+**Given** `onlyOfficeSecret` rỗng  
+**When** user mở preview Office và OnlyOffice gọi callback  
+**Then** preview là chỉ đọc  
+**And** callback bị từ chối, không ghi tệp về storage.
+
+Nguồn: [Xem trước và tích hợp](./preview-and-integrations).
+
+### Callback ghi lại khi đủ điều kiện đã xác minh
+
+**Given** `onlyOfficeSecret` có giá trị, token/key callback hợp lệ và preview trước đó cho phép sửa  
+**And** user đã cache có `UPLOAD` và adapter là `AbstractProxyTransferService`  
+**When** callback nhận trạng thái `2` hoặc `6`  
+**Then** hệ thống có thể gọi ghi file đã chỉnh sửa về storage.
+
+**Chưa xác minh:** Việc ghi thành công end-to-end của từng provider không được khẳng định.
+
+Nguồn: [Xem trước và tích hợp](./preview-and-integrations).
+
+### Callback tiêu thụ key nhưng ghi tệp thất bại
+
+**Given** callback có trạng thái được xử lý và key đang có trong cache  
+**When** controller lấy và xóa key trước khi bước kiểm tra quyền hoặc truyền tệp thất bại  
+**Then** lần callback sau không thể dùng lại key cũ để thử lưu lại.
+
+**Caveat implementation:** cần xử lý như một rủi ro retry của callback, không xem đây là lifecycle nghiệp vụ mong muốn.
+
+Nguồn: `OnlyOfficeController#callBack`, [Xem trước và tích hợp](./preview-and-integrations).

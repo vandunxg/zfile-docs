@@ -1,0 +1,4 @@
+interface:
+  display_name: "Vietnamese Docs Orchestrator"
+  short_description: "Viết và biên tập tài liệu kỹ thuật tiếng Việt tự nhiên, đúng nguồn"
+  default_prompt: "Viết hoặc biên tập tài liệu bằng tiếng Việt tự nhiên, đúng người đọc và khớp với nguồn sự thật."

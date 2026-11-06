@@ -1,0 +1,34 @@
+---
+title: Danh mục tính năng
+sidebar_label: Danh mục tính năng
+---
+
+# Danh mục tính năng
+
+Danh mục này giúp lập trình viên mới chọn đúng trang trước khi lần theo controller hoặc service. Đọc [Business Core](./core/system-purpose), [Mô hình business](./core/business-model) và [Các quy trình cốt lõi](./core/core-workflows) trước để nắm phạm vi chung.
+
+| Tính năng | Vai trò chính | Kết quả nghiệp vụ | Phụ thuộc chính | Đọc chi tiết |
+| --- | --- | --- | --- | --- |
+| Cài đặt và trạng thái hệ thống | Người cài đặt, admin đầu tiên | Cập nhật admin seed, đặt tên site và chuyển hệ thống từ chưa cài đặt sang đã cài đặt | `installed`, admin seed, transaction | [Cài đặt và trạng thái hệ thống](./installation-and-system-state) |
+| Storage source | Admin, user được cấp quyền | Backend lưu trữ trở thành workspace khả dụng | Adapter, kết nối, `UserStorageSource` | [Storage source](./storage-sources) |
+| Thiết lập provider | Admin, OAuth provider | Lấy token và tìm bucket/drive/site/list cần thiết trước khi lưu source | OAuth callback, discovery helper, credential/provider policy | [Storage source](./storage-sources#thiết-lập-theo-provider), [Ma trận khả năng provider](./provider-capability-matrix) |
+| Thao tác tệp | User | Duyệt, tạo, upload, xóa, đổi tên, di chuyển hoặc sao chép tệp trong phạm vi được phép | Storage source, permission, password, provider | [Thao tác tệp](./file-operations) |
+| README thư mục và rule theo path | Admin, user đọc nội dung | Hiển thị hướng dẫn theo thư mục; áp dụng password/filter theo danh sách cấu hình hiện hành | Biểu thức path, display mode; mỗi lần lưu thay thế toàn bộ danh sách của loại cấu hình đó | [Storage source](./storage-sources#readme-thư-mục-password-và-filter), [Kiểm soát truy cập](./access-control) |
+| Kiểm soát truy cập | User, khách qua link | Chỉ path và thao tác hợp lệ mới được truy cập | Assignment, permission, password, filter; `StorageSource.enable` điều khiển danh sách và direct/short link, không thu hồi chắc chắn request thông thường biết key | [Kiểm soát truy cập](./access-control) |
+| Chia sẻ và liên kết | User tạo link, khách truy cập | Khách nhận nội dung trong phạm vi link và policy | Storage source, expiry, password, filter, chữ ký | [Chia sẻ và liên kết](./sharing-and-links) |
+| Danh tính và quản trị | Admin, user, SSO provider | Xác thực user, quản trị cấu hình và cấp storage source | Session, role `admin`, `UserStorageSource` | [Danh tính và quản trị](./identity-and-administration) |
+| Cấu hình và vận hành | Quản trị viên, người vận hành | Thay đổi hành vi runtime, chặn IP/User-Agent và điều tra bằng log | System config, dynamic mapping, audit log | [Cấu hình và vận hành hệ thống](./system-configuration-and-operations) |
+| Xem trước và tích hợp | User, khách share, OnlyOffice | Hiển thị tệp; Office chỉ ghi lại khi đủ điều kiện | Adapter, `onlyOfficeSecret`, `UPLOAD`, callback | [Xem trước và tích hợp](./preview-and-integrations) |
+
+## Cách chọn điểm kiểm tra
+
+| Khi cần trả lời | Xem trước | Sau đó xem |
+| --- | --- | --- |
+| Hệ thống đã cài đặt chưa, hoặc cài lại vì sao bị từ chối? | [Cài đặt và trạng thái hệ thống](./installation-and-system-state) | [Danh tính và quản trị](./identity-and-administration) |
+| User vì sao không thấy hoặc không thao tác được source? | [Quyết định truy cập và hiển thị](./core/access-and-visibility) | [Kiểm soát truy cập](./access-control), [Ma trận quyền](./permission-matrix) |
+| Lưu một rule password/filter/README có ảnh hưởng các rule cũ không? | [Storage source](./storage-sources#readme-thư-mục-password-và-filter) | [Kiểm soát truy cập](./access-control) |
+| Một batch có item thành công và thất bại? | [Quy tắc và tình huống thực tế](./core/business-rules-and-scenarios) | [Thao tác tệp](./file-operations), [Kịch bản chấp nhận](./acceptance-scenarios) |
+| Link mở được nhưng không tải được? | [Các workflow cốt lõi](./core/core-workflows) | [Chia sẻ và liên kết](./sharing-and-links), [Danh mục quy tắc business](./business-rules-catalog) |
+| Provider có làm được thao tác hoặc lưu Office không? | [Ma trận khả năng provider](./provider-capability-matrix) | [Xem trước và tích hợp](./preview-and-integrations) |
+
+Không suy ra quyền thao tác từ việc user nhìn thấy source, và cũng không coi việc tắt `StorageSource.enable` là đã thu hồi mọi request biết key. Không suy ra khả năng provider end-to-end từ việc source khởi tạo thành công hoặc adapter có method tương ứng. Các lớp này được tách riêng trong [Mô hình business](./core/business-model), [Storage source](./storage-sources) và [Ma trận khả năng provider](./provider-capability-matrix).

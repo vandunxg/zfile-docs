@@ -1,0 +1,9 @@
+schema_version: "1.1"
+name: deep-mixed-audience-from-code
+expected_outcome: |
+  One Markdown document: a plain-language part for accountants and a technical
+  part for new developers, every rule traceable to the Java code (50M threshold,
+  self-approval ban, 10-500 char reason, retry only on gateway timeout,
+  APPROVED_PAYMENT_PENDING), with no invented UI, channels or SLAs.
+context:
+  scaffold_script: place-files.sh

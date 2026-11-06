@@ -1,0 +1,35 @@
+---
+title: Thuật ngữ
+sidebar_label: Thuật ngữ
+---
+
+# Thuật ngữ
+
+Trang này chuẩn hóa cách dùng thuật ngữ trong tài liệu ZFile. Các tên class, enum, field và API được giữ nguyên trong backticks.
+
+| Thuật ngữ | Nghĩa trong ZFile | Nguồn tham chiếu |
+| --- | --- | --- |
+| Storage source | Một cấu hình backend lưu trữ được ZFile quản lý. Nó có `id`, `key`, type và các parameter cấu hình; hệ thống khởi tạo file service tương ứng qua `StorageSourceContext`. | `StorageSourceService#saveStorageSource` |
+| Storage provider | Implementation xử lý tệp cho một loại storage source cụ thể. | `StorageTypeEnum`, `AbstractBaseFileService` |
+| `storageKey` | Key dùng để định danh storage source trong các request và khi lấy file service. | `StorageSourceService#findByStorageKey`, `StorageSourceContext#getByStorageKey` |
+| File operation | Thao tác trên tệp hoặc thư mục như xem danh sách, tạo thư mục, upload, delete, rename, move và copy. | `FileController`, `FileOperatorController`, `FileOperatorTypeEnum` |
+| Permission | Quyền đối với một loại file operation trên một storage source. Permission được đọc từ `UserStorageSource.permissions`. | `FileOperatorCheckAspect#allowAccess` |
+| Password | Password cấu hình cho một đường dẫn trong storage source. Endpoint có `@CheckPassword` sẽ kiểm tra password trước khi tiếp tục. | `CheckPasswordAspect#around` |
+| Share link | Link có `shareKey`, storage source, đường dẫn chia sẻ, danh sách mục, password tùy chọn và `expireDate` tùy chọn. | `ShareLinkService#createShareLink` |
+| Direct link | Link xử lý download trực tiếp từ `storageKey` và file path. `showPathLink` kiểm soát bước phân giải link, không kiểm soát bước sinh URL. | `LinkDownloadService#handlerDirectLink` |
+| Short link | Link dùng `shortKey`, ánh xạ đến file và có thể có `expireDate`. `showShortLink` kiểm soát bước phân giải link, không kiểm soát bước sinh URL. | `LinkDownloadService#handlerShortLink` |
+| Preview | Khả năng hiển thị nội dung tệp trong ứng dụng. README xác nhận các loại image, audio/video, text, PDF, Office và OBJ. | `README.md`, module `onlyoffice` |
+| User base path | Đường dẫn gốc của user được file service ghép vào khi xử lý một số thao tác và tạo share link. | `AbstractBaseFileService#getCurrentUserBasePath`, `ShareLinkService#createShareLink` |
+| Proxy download | Cơ chế để chính ZFile đọc dữ liệu từ storage adapter và stream tệp qua `GET /pd/{storageKey}/**`. Đây không phải reverse proxy đứng trước ZFile. Adapter phải hỗ trợ `AbstractProxyTransferService`; URL luôn có chữ ký gắn với storage và path, đồng thời mang thời hạn hoặc dấu hiệu vĩnh viễn tùy cấu hình. | `module.storage.controller.proxy.ProxyDownloadController`, `AbstractProxyTransferService#getProxyDownloadUrl`, `ProxyDownloadUrlUtils` |
+
+## Quy ước dùng từ
+
+- Dùng **storage source** khi nói về cấu hình lưu trữ trong ZFile; không dùng lẫn với storage provider.
+- Dùng **share link**, **direct link** và **short link** theo đúng loại link trong source code; không gọi chung là download link khi cần phân biệt quyền hoặc vòng đời.
+- Dùng **permission** cho quyền thao tác trên storage source và **password** cho cơ chế bảo vệ theo đường dẫn.
+- Dùng **proxy download** cho luồng ZFile stream tệp; dùng **reverse proxy** cho Nginx, Caddy hoặc lớp chuyển tiếp HTTP đặt trước ứng dụng.
+
+## Đọc tiếp
+
+- Xem [Tổng quan sản phẩm](./overview) để hiểu các nhóm khả năng.
+- Xem [Bản đồ domain](./domain-map) để biết domain sở hữu từng thuật ngữ.

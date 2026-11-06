@@ -1,0 +1,82 @@
+---
+title: Kiểm soát truy cập tệp
+sidebar_label: Kiểm soát truy cập
+---
+
+# Kiểm soát truy cập tệp
+
+ZFile quyết định người dùng được làm gì với tệp bằng quyền theo nguồn lưu trữ, mật khẩu theo đường dẫn và bộ lọc theo đường dẫn. Phần đầu giải thích quy tắc nghiệp vụ; phần cuối dùng để lần theo mã nguồn.
+
+## Mục tiêu business
+
+- Với file operation thông thường, kiểm tra user đang bật và assignment `UserStorageSource.enable`; assignment bị tắt sẽ bị từ chối, còn assignment không tồn tại có caveat null dereference nêu bên dưới.
+- Dùng `StorageSource.enable` để quyết định source có xuất hiện trong danh sách khám phá; không coi cờ này là kiểm tra quyền của mọi file operation.
+- Tách ba lớp kiểm soát: `permissions` quyết định thao tác, password bảo vệ path, filter quyết định truy cập, hiển thị hoặc tải xuống.
+- Một lớp không thay thế lớp khác. Có permission không tự bỏ qua password hay filter.
+
+## Actor và ownership
+
+| Actor/object | Ownership và trách nhiệm |
+| --- | --- |
+| User | Phải đang bật để thực hiện file operation. |
+| `UserStorageSource` | Liên kết một user với storage source, trạng thái `enable` và tập `permissions`. Đây là ranh giới quyền tệp theo storage source. |
+| Storage source | `StorageSource.enable` quyết định source có xuất hiện trong danh sách source khả dụng. `FileOperatorCheckAspect#allowAccess` không đọc cờ này khi kiểm tra file operation thông thường. |
+| Người quản lý cấu hình password/filter | Sở hữu rule theo storage source. Controller dùng để cấu hình các rule này chưa được xác minh trong phạm vi trang. |
+
+## Business objects/lifecycle
+
+| Object | Vòng đời hoặc ý nghĩa business đã xác minh |
+| --- | --- |
+| `UserStorageSource` | Được dùng khi kiểm tra mỗi file operation, với `enable` và `permissions` là dữ liệu quyết định quyền. |
+| `FileOperatorTypeEnum` | Đại diện loại thao tác; giá trị tương ứng phải có trong `permissions`, trừ `AVAILABLE`. |
+| Password rule | Áp dụng theo path trên storage source. Rule trống bị bỏ qua; không có rule khớp nghĩa là kiểm tra password thành công. |
+| Filter rule | Áp dụng theo path trên storage source với compatibility glob pattern: inaccessible, hidden hoặc disable-download. |
+
+## Workflow
+
+1. Request chưa đăng nhập được `ZFileAuthUtil` gán danh tính fallback là anonymous user ID `2`. Vì vậy anonymous browsing dùng user và assignment của ID `2`, không phải một nhánh bỏ qua quyền.
+2. `SecurityFilter` áp dụng cho `/*`; IP hoặc `User-Agent` khớp blocklist bị trả HTTP `403` trước khi request đến controller và các rule file.
+3. Khi khám phá source, luồng danh sách chỉ trả source có `StorageSource.enable=true` và assignment của user đang bật. Đây là kiểm tra cho discovery, không phải kiểm tra của mọi file operation.
+4. Khi gọi file service, `FileOperatorCheckAspect#allowAccess` kiểm tra user hiện tại và `UserStorageSource.enable`. Với `AVAILABLE`, aspect cho phép sau các kiểm tra này; với operation khác, `permissions` phải chứa giá trị tương ứng. Aspect này không kiểm tra `StorageSource.enable`.
+5. Với mutation endpoint có `@CheckPassword` hoặc `@CheckPasswords`, `CheckPasswordAspect` bọc method controller, còn permission aspect bọc lời gọi file service bên trong. Vì vậy password có thể bị kiểm tra và báo lỗi trước permission thao tác.
+6. Riêng luồng liệt kê, `fileList()` chạy kiểm tra `AVAILABLE` trước; sau khi provider trả danh sách, `FileChain` chạy theo thứ tự inaccessible, password thư mục, lọc child, sort rồi xử lý URL download/preview.
+
+## Rules/exception
+
+| Rule hoặc ngoại lệ | Hành vi đã xác minh |
+| --- | --- |
+| `IGNORE_PASSWORD` | User có permission này bỏ qua password check. |
+| Password khớp rule | Thiếu password trả `BIZ_STORAGE_SOURCE_FOLDER_PASSWORD_REQUIRED`; password sai trả `BIZ_STORAGE_SOURCE_FOLDER_PASSWORD_ERROR`. |
+| `IGNORE_HIDDEN` | `FilterConfigService#testPattern` trả `false` ngay khi user có quyền này. Do cả inaccessible, hidden và disable-download đều gọi method đó, quyền này hiện bỏ qua **mọi** phép so khớp filter, không chỉ rule hidden. |
+| Lọc child khi liệt kê | `checkFileIsHidden` nạp toàn bộ filter rule bằng `findByStorageId`, không lọc theo `mode`. `FileHiddenCommand` loại mọi child có full path khớp bất kỳ rule nào, kể cả rule được cấu hình với mode inaccessible hoặc disable-download. |
+| Disable download | `checkFileIsDisableDownload` kiểm tra file path và parent path. Đây là policy riêng; permission `DOWNLOAD` không thay thế policy này. |
+| `PREVIEW` và `DOWNLOAD` | Hai quyền này chủ yếu định hình response danh sách. `FileDownloadPermissionCommand` chỉ xóa trường `url` khi user thiếu cả hai quyền; chỉ cần một quyền thì URL được giữ lại. `DOWNLOAD` vì vậy không phải access control tuyệt đối và không chặn direct/short link. |
+| `SHARE_LINK` và `SHORT_LINK` | Controller có gắn `@StoragePermissionCheck`, nhưng `FileOperatorCheckAspect#annotationCheck` chỉ enforce action `LINK`; với hai action này, aspect gọi thẳng `proceed()`. Vì vậy permission mang tên tương ứng hiện không chặn việc tạo share link hoặc short link. |
+| Pattern | Password và filter dùng compatibility glob pattern để so khớp expression với full path; password gồm cả user base path. |
+| Thiếu `UserStorageSource` | **Caveat implementation:** `allowAccess` gọi `userStorageSource.getEnable()` mà không kiểm tra `null`. Assignment không tồn tại hiện có thể gây null dereference, không bảo đảm trả một lỗi từ chối nghiệp vụ sạch. |
+
+**Caveat implementation:** Tên `IGNORE_HIDDEN` hẹp hơn tác động thực tế của code. Không dùng quyền này như một ngoại lệ chỉ dành cho việc hiển thị nếu inaccessible hoặc disable-download phải tiếp tục có hiệu lực.
+
+**Giới hạn phạm vi:** Không khẳng định mọi endpoint đều chạy toàn bộ workflow. Bảo đảm chỉ áp dụng cho endpoint/method có aspect, annotation hoặc handler đã được khảo sát.
+
+## Scenario
+
+**User không thấy source nhưng vẫn gọi được URL đã biết.** `StorageSource.enable=false` loại source khỏi danh sách khám phá, nhưng ordinary `FileOperatorCheckAspect` không kiểm tra cờ này. Kiểm tra riêng `UserStorageSource.enable`, permission, password/filter và trạng thái file service; không mô tả việc ẩn source như một cơ chế thu hồi truy cập tuyệt đối.
+
+**Mutation báo lỗi password dù user thiếu permission thao tác.** Đây là thứ tự có thể xảy ra vì password aspect chạy ở controller trước khi lời gọi file service chạm permission aspect. Không dùng loại lỗi đầu tiên để suy ra user đã có permission.
+
+## Vị trí trong mã nguồn
+
+| Thành phần | Vai trò |
+| --- | --- |
+| `im.zhaojun.zfile.module.storage.aspect.FileOperatorCheckAspect#allowAccess` | Kiểm tra user, assignment `UserStorageSource.enable` và permission file operation; không kiểm tra `StorageSource.enable`. |
+| `im.zhaojun.zfile.module.storage.aspect.FileOperatorCheckAspect#annotationCheck` | Chỉ chuyển action `LINK` sang kiểm tra permission; các action annotation khác hiện đi tiếp. |
+| `im.zhaojun.zfile.module.storage.aspect.CheckPasswordAspect` | Lấy `storageKey`, password, path từ request và gọi kiểm tra password. |
+| `im.zhaojun.zfile.module.user.service.UserStorageSourceService` | Quản lý liên kết user-storage source. |
+| `im.zhaojun.zfile.module.password.service.PasswordConfigService#verifyPassword` | So khớp password rule theo path. |
+| `im.zhaojun.zfile.module.filter.service.FilterConfigService` | Áp dụng filter inaccessible, hidden và disable-download. |
+| `im.zhaojun.zfile.module.storage.chain.FileChain` | Xác định thứ tự xử lý kết quả liệt kê. |
+| `im.zhaojun.zfile.core.util.ZFileAuthUtil` | Dùng anonymous user ID `2` khi request không có login ID. |
+| `im.zhaojun.zfile.core.filter.SecurityFilter` | Chặn IP và `User-Agent` theo cấu hình trên toàn bộ `/*`. |
+
+Đọc thêm: [Thao tác tệp](./file-operations), [Chia sẻ và liên kết](./sharing-and-links) và [Thuật ngữ](./glossary).

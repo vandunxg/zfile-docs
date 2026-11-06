@@ -1,0 +1,62 @@
+---
+title: Cài đặt và trạng thái hệ thống
+sidebar_label: Cài đặt hệ thống
+---
+
+# Cài đặt và trạng thái hệ thống
+
+Luồng cài đặt tạo thông tin đăng nhập cho admin có sẵn trong cơ sở dữ liệu, đặt tên site và chuyển hệ thống từ `installed=false` sang `installed=true`. Phần cuối dành cho lập trình viên cần đối chiếu mã nguồn.
+
+## Trạng thái và actor
+
+| Trạng thái | Ý nghĩa | Hành động hợp lệ |
+| --- | --- | --- |
+| Chưa cài đặt | `SystemConfigDTO.installed` là `false`; dữ liệu seed của MySQL và SQLite đặt giá trị ban đầu này. | Có thể gửi yêu cầu cài đặt với `siteName`, `username`, `password`. |
+| Đã cài đặt | `SystemConfigDTO.installed` là `true`. | Có thể vận hành hệ thống; yêu cầu cài đặt tiếp theo bị từ chối. |
+
+Người cài đặt cung cấp tên site và thông tin đăng nhập ban đầu. Sau khi cài đặt, bản ghi có `UserConstant.ADMIN_ID` là tài khoản quản trị đã được cập nhật; luồng này không tạo user admin mới.
+
+## Workflow cài đặt
+
+1. Client gọi `GET /api/install/status`. Controller trả giá trị `installed` từ system config.
+2. Khi trạng thái là chưa cài đặt, client gửi `POST /api/install` với `siteName`, `username`, `password`. `InstallSystemRequest` không khai báo validation cho ba field này, vì vậy backend không bảo đảm chúng khác rỗng ở lớp request.
+3. `InstallService#install` đọc lại trạng thái. Nếu hệ thống đã cài đặt, service dừng với `BIZ_SYSTEM_ALREADY_INIT` (`40001`). Kiểm tra phía service ngăn việc bỏ qua màn hình hoặc kết quả status cũ để cài lại.
+4. Service gọi `UserService#initAdminUser`. Method lấy user có `UserConstant.ADMIN_ID`, cập nhật username, mã hóa password và đặt default permission cho admin.
+5. Default permission của admin gồm mọi giá trị trong `FileOperatorTypeEnum` trừ các permission có value bắt đầu bằng `ignore`. Vì vậy `ignorePassword` và `ignoreHidden` không được cấp mặc định.
+6. Nếu cập nhật admin không tác động đúng một bản ghi, service dừng với `BIZ_SYSTEM_INIT_ERROR` (`40002`). Nếu không tìm thấy admin seed, `initAdminUser` cũng báo lỗi nghiệp vụ thay vì tạo user thay thế.
+7. Service cập nhật `siteName` và `installed=true` trong system config. Từ thời điểm transaction commit, status trả về đã cài đặt.
+
+## Tính toàn vẹn transaction
+
+`InstallService#install` chạy trong transaction với `rollbackFor = Exception.class`. Việc cập nhật admin và system config thuộc cùng luồng cài đặt: nếu một bước ném exception, thay đổi cơ sở dữ liệu của luồng được rollback thay vì để lại trạng thái admin đã đổi nhưng cờ `installed` chưa bật, hoặc ngược lại.
+
+`SystemConfigService#updateSystemConfig` chỉ cập nhật các field có giá trị trong DTO cài đặt. Trong workflow này, hai field được đặt là `siteName` và `installed`; các system setting khác giữ nguyên.
+
+## Quy tắc vận hành
+
+| Tình huống | Kết quả |
+| --- | --- |
+| Gọi status trước cài đặt | Trả `false`. |
+| Cài đặt lần đầu và cập nhật admin thành công | Lưu tên site, bật `installed`, commit transaction. |
+| Gửi lại yêu cầu cài đặt sau khi đã cài | Từ chối bằng `BIZ_SYSTEM_ALREADY_INIT`; không dùng luồng install để đổi admin hoặc tên site. |
+| Chạy ở demo mode có `@DemoDisable` chặn request | `POST /api/install` không đi vào service; đây là chặn ở controller/aspect, không phải trạng thái `installed`. |
+| Không có admin seed | Cài đặt thất bại; cần kiểm tra hoặc khởi tạo lại cơ sở dữ liệu theo thông báo từ `UserService`. |
+| Cập nhật admin trả kết quả không thành công | Cài đặt thất bại bằng `BIZ_SYSTEM_INIT_ERROR`; transaction rollback. |
+
+Sau khi hệ thống đã cài, việc đổi thông tin tài khoản hoặc system setting phải đi qua workflow quản trị tương ứng, không đặt lại `installed` để chạy lại cài đặt.
+
+## Vị trí trong mã nguồn
+
+| Vai trò | Vị trí |
+| --- | --- |
+| Status và entry point cài đặt | `im.zhaojun.zfile.module.install.controller.InstallController` |
+| Kiểm tra trạng thái, điều phối và transaction | `im.zhaojun.zfile.module.install.service.InstallService` |
+| Request cài đặt | `im.zhaojun.zfile.module.install.model.request.InstallSystemRequest` |
+| Khởi tạo admin và default permission | `im.zhaojun.zfile.module.user.service.UserService#initAdminUser` |
+| Đọc/cập nhật `siteName`, `installed` | `im.zhaojun.zfile.module.config.service.SystemConfigService` |
+| Giá trị `installed=false` ban đầu | `db/migration-mysql/R__data.sql`, `db/migration-sqlite/R__data.sql` |
+
+## Đọc tiếp
+
+- [Danh tính và quản trị](./identity-and-administration) mô tả workflow tài khoản sau cài đặt.
+- [Storage source](./storage-sources) mô tả cách kết nối provider sau khi hệ thống sẵn sàng.

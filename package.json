@@ -1,0 +1,24 @@
+{
+  "name": "zfile-business-engineering-docs",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "yarn@1.22.22",
+  "scripts": {
+    "start": "docusaurus start --port=3002",
+    "build": "docusaurus build",
+    "test": "node --test tests/*.test.mjs",
+    "serve": "docusaurus serve",
+    "clear": "docusaurus clear"
+  },
+  "dependencies": {
+    "@docusaurus/core": "3.9.2",
+    "@docusaurus/preset-classic": "3.9.2",
+    "@docusaurus/theme-mermaid": "3.9.2",
+    "d3-transition": "3.0.2",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "resolutions": {
+    "webpack": "5.105.4"
+  }
+}

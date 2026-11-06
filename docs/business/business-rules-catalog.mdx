@@ -1,0 +1,33 @@
+---
+title: Danh mục quy tắc business
+sidebar_label: Quy tắc business
+---
+
+# Danh mục quy tắc business
+
+Danh mục này gom các quy tắc xuyên tính năng để lập trình viên mới kiểm tra đúng điều kiện trước khi sửa mã nguồn. Xem [Mô hình business](./core/business-model) để biết các đối tượng liên quan và [Quyết định truy cập và hiển thị](./core/access-and-visibility) để biết thứ tự kiểm tra.
+
+| ID | Quy tắc đã xác minh | Phạm vi | Nguồn |
+| --- | --- | --- | --- |
+| BR-01 | User phải bật và có `UserStorageSource` bật thì mới dùng được storage source; `AVAILABLE` không cần permission thao tác riêng. | File operation | [Kiểm soát truy cập](./access-control) |
+| BR-02 | Operation khác `AVAILABLE` cần permission tương ứng trong assignment. | File operation | [Kiểm soát truy cập](./access-control) |
+| BR-03 | Password được kiểm tra theo path; với file dùng parent path. `IGNORE_PASSWORD` bỏ qua kiểm tra. | Endpoint có `@CheckPassword` | [Kiểm soát truy cập](./access-control) |
+| BR-04 | Filter có mode inaccessible, hidden và disable-download. Tuy nhiên, khi liệt kê child, `checkFileIsHidden` đọc toàn bộ rule và loại mọi child khớp; `IGNORE_HIDDEN` hiện bỏ qua mọi phép so khớp filter. | Path/filter | [Kiểm soát truy cập](./access-control) |
+| BR-05 | Move/copy yêu cầu số nguồn và đích bằng nhau; không cho đưa đối tượng vào thư mục con của chính nó. Item lỗi không dừng batch. | Move/copy | [Thao tác tệp](./file-operations) |
+| BR-06 | `shareKey` tự đặt dài 3-8 ký tự, chỉ gồm chữ cái, số, `_`, `-`, chưa tồn tại và cần `CUSTOM_SHARE_KEY`. | Tạo share link | [Chia sẻ và liên kết](./sharing-and-links) |
+| BR-07 | Share link hết hạn hoặc bị xóa không còn hợp lệ; `expireDate` khi tạo phải ở tương lai. | Share link | [Chia sẻ và liên kết](./sharing-and-links) |
+| BR-08 | Short link dùng `expireTime` theo giây; `-1` là vĩnh viễn và có thể tái sử dụng link vĩnh viễn cùng storage/path. Mọi giá trị, kể cả `-1`, phải có trong `linkExpireTimes`. | Short link | [Chia sẻ và liên kết](./sharing-and-links) |
+| BR-09 | Direct/short link cần source đã khởi tạo và bật; Referer, rate limit và disable-download có thể chặn download khi cấu hình áp dụng. `showPathLink`/`showShortLink` chặn phân giải, không chặn sinh link. | Link download | [Chia sẻ và liên kết](./sharing-and-links) |
+| BR-10 | Không có `onlyOfficeSecret` thì Office chỉ đọc và callback bị từ chối. | OnlyOffice | [Xem trước và tích hợp](./preview-and-integrations) |
+| BR-11 | Cập nhật user thay thế toàn bộ assignment storage source; assignment không có trong request mới sẽ bị xóa. | Quản trị user | [Danh tính và quản trị](./identity-and-administration) |
+| BR-12 | Template ID `0`, admin ID `1` và anonymous ID `2` là user hệ thống, không được xóa. | Quản trị user | [Danh tính và quản trị](./identity-and-administration) |
+| BR-13 | Callback SSO có thể tạo session cho user đang tắt, nhưng file operation kiểm tra lại trạng thái user và từ chối sau đó. | SSO/file operation | [Danh tính và quản trị](./identity-and-administration) |
+| BR-14 | Share download đã khảo sát không cho thấy enforcement source-enable, download filter hoặc `shareEntries`; đây là điểm cần kiểm tra bảo mật, không phải hành vi được hỗ trợ. | Share download | [Chia sẻ và liên kết](./sharing-and-links) |
+| BR-15 | OnlyOffice xóa key callback trước các bước kiểm tra quyền lưu và truyền tệp; `3000` là lock timeout theo mili giây, không phải TTL của key. | OnlyOffice callback | [Xem trước và tích hợp](./preview-and-integrations) |
+
+## Ngoại lệ và giới hạn
+
+- Admin là role cố định của user ID `1`; permission storage source không cấp quyền quản trị. Xem [Danh tính và quản trị](./identity-and-administration).
+- Permission, password, filter và capability provider là các lớp độc lập. Đạt lớp trước không thay thế lớp sau.
+- **Chưa xác minh:** Không khẳng định mọi endpoint áp dụng đầy đủ mọi rule trên. Rule chỉ chắc chắn ở endpoint, aspect hoặc handler đã khảo sát trong các trang nguồn.
+- **Chưa xác minh:** Capability cụ thể của từng provider phải đối chiếu [Ma trận khả năng provider](./provider-capability-matrix), không suy ra từ rule chung.

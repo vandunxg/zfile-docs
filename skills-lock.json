@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "vietnamese-docs-orchestrator": {
+      "source": "vandunxg/vietnamese-docs-orchestrator",
+      "sourceType": "github",
+      "skillPath": "SKILL.md",
+      "computedHash": "a138ebec12acffc1a1ee52fe6ff66ed1578005dc4344cd2ca6476ec0dbab3bed"
+    }
+  }
+}

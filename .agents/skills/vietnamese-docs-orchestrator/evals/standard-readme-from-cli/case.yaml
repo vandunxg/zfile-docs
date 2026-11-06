@@ -1,0 +1,8 @@
+schema_version: "1.1"
+name: standard-readme-from-cli
+expected_outcome: |
+  A Vietnamese README.md for developers that matches export_report.py exactly:
+  required env var, options and defaults, the 31-day limit, output file naming,
+  exit codes; nothing invented; no filler.
+context:
+  scaffold_script: place-files.sh
