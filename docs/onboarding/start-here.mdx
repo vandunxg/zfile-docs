@@ -28,6 +28,7 @@ Lệnh này mặc định bỏ qua test vì POM đặt `skipTests=true`. Do đó
 3. [Điều hướng mã nguồn](../engineering/code-navigation): lần từ endpoint qua service, mapper hoặc storage implementation.
 4. [Dữ liệu và cấu hình](../engineering/data-and-configuration): kiểm tra datasource, migration, profile và log.
 5. [Đóng góp đầu tiên](./first-contribution): chọn một thay đổi nhỏ và rà các phần bị ảnh hưởng, không giả định quy trình pull request chưa có nguồn.
+6. [Hướng dẫn đóng góp mã nguồn](./code-contribution-guide): chọn đúng tầng, flow và thành phần có thể tái sử dụng trước khi viết mã.
 
 Trong mã nguồn, bắt đầu ở `ZfileApplication.java` và `src/main/resources/application.properties`, rồi vào `core/` hoặc `module/` theo miền đã chọn. Với chức năng storage source, xem `module/storage/context/StorageSourceContext.java`.
 
@@ -48,4 +49,4 @@ Tạo issue với phiên bản, môi trường/datasource, bước tái hiện, 
 
 Nguồn: `pom.xml`, `ZfileApplication.java`, `application.properties`, `application-prod.properties`, `UserController.java`, `logback-spring.xml`.
 
-Đọc tiếp: [Đóng góp đầu tiên](./first-contribution) để chọn phạm vi thay đổi, hoặc [Điều hướng mã nguồn](../engineering/code-navigation) để lần theo một chức năng cụ thể.
+Đọc tiếp: [Đóng góp đầu tiên](./first-contribution) để chọn phạm vi thay đổi, [Hướng dẫn đóng góp mã nguồn](./code-contribution-guide) để chuẩn bị sửa mã, hoặc [Điều hướng mã nguồn](../engineering/code-navigation) để lần theo một chức năng cụ thể.

@@ -1,0 +1,61 @@
+---
+title: Hướng dẫn đóng góp mã nguồn
+sidebar_label: Hướng dẫn đóng góp
+---
+
+# Hướng dẫn đóng góp mã nguồn
+
+Trang này giúp backend contributor chọn đúng điểm sửa, dùng lại thành phần có sẵn và kiểm tra những phần bị ảnh hưởng trước khi thay đổi ZFile. Phần này dành cho mã nguồn backend ZFile; cách cập nhật site Docusaurus nằm trong [Quy ước biên soạn](../engineering/documentation-standards).
+
+## Bắt đầu từ thay đổi cần làm
+
+| Nếu cần thay đổi | Bắt đầu đọc | Kiểm tra tiếp |
+| --- | --- | --- |
+| API hoặc quy tắc nghiệp vụ | Route trong controller | Service, annotation, aspect và exception liên quan |
+| Truy vấn hoặc dữ liệu | `*Mapper.java` | XML cùng tên, entity, request/result và datasource |
+| Schema | `resources/db/migration-sqlite/` và `resources/db/migration-mysql/` | `DataSourceBeanPostProcessor` và migration đã áp dụng |
+| Storage provider | `StorageTypeEnum` và implementation tương ứng | `AbstractBaseFileService`, param `IStorageParam`, `StorageSourceContext` |
+| Quyền, mật khẩu hoặc lọc danh sách tệp | Annotation ở endpoint hoặc method file service | Aspect và `FileChain` theo đúng thứ tự hiện có |
+| Response lỗi | Exception nghiệp vụ | `GlobalExceptionHandler` và `AjaxJson` |
+
+Đọc [Điều hướng mã nguồn](../engineering/code-navigation) để lần từ một route. Khi cần hiểu ranh giới giữa các tầng, xem [Convention mã nguồn](../engineering/code-conventions); khi cần theo một chuỗi gọi cụ thể, xem [Luồng mã nguồn](../engineering/code-flows).
+
+## Trước khi viết mã
+
+1. Xác định hành vi, route hoặc loại storage bị tác động; không bắt đầu từ một provider cụ thể nếu luồng hiện có đi qua `StorageSourceContext`.
+2. Lần qua controller, service, mapper/context, aspect hoặc chain. Kiểm tra cache, `@Transactional` và event nếu service đó dùng chúng.
+3. Tìm abstraction hoặc util tại [Thành phần tái sử dụng](../engineering/reusable-components) trước khi thêm lớp hoặc điều kiện mới.
+4. Với thay đổi dữ liệu, xác định cả SQLite và MySQL có cùng schema hay không. `DataSourceBeanPostProcessor` chỉ nạp một thư mục migration theo driver đang dùng.
+5. Với hành vi HTTP, xác định exception và response format hiện có trước khi tạo response lỗi mới.
+
+## Trong khi thay đổi
+
+### API và domain
+
+Controller hiện có chủ yếu nhận request, gọi service hoặc converter và trả `AjaxJson`. Đặt điều phối nghiệp vụ, transaction, cache hoặc event tại service. Nếu điều kiện áp dụng cho nhiều endpoint hoặc thao tác file, kiểm tra annotation/aspect hoặc chain trước thay vì chèn điều kiện vào từng controller.
+
+### Persistence và migration
+
+Mapper Java kế thừa `BaseMapper` khi phù hợp và chứa các method truy vấn riêng; phần SQL XML nằm dưới `resources/mapper/`. Khi đổi câu lệnh XML, đồng bộ method mapper, entity và model request/result liên quan.
+
+Schema migration dùng tên `V...__...sql`. Không sửa migration đã áp dụng. Khi schema áp dụng cho cả SQLite và MySQL, thêm migration tương ứng ở cả `migration-sqlite` và `migration-mysql`.
+
+### Storage
+
+Một provider mới hoặc thay đổi hành vi provider cần đi qua `AbstractBaseFileService<P extends IStorageParam>`. Context chọn implementation theo `StorageTypeEnum`, ghép param và gọi `init()` cùng `testConnection()`. Không lấy trực tiếp implementation provider từ controller khi đã có `StorageSourceContext`.
+
+### Kiểm tra chéo
+
+`FileOperatorCheckAspect` kiểm tra quyền trên các method của `AbstractBaseFileService`, còn `CheckPasswordAspect` thực thi ở method có `@CheckPassword` hoặc `@CheckPasswords`. `FileChain` xử lý danh sách tệp theo thứ tự quyền truy cập, mật khẩu thư mục, ẩn tệp, sắp xếp và quyền tải xuống. Thứ tự này ảnh hưởng kết quả nên không thay đổi nếu chưa đối chiếu toàn bộ luồng.
+
+## Sau khi thay đổi
+
+- Đồng bộ mapper Java, XML, entity và DTO/request/result khi thay đổi persistence.
+- Kiểm tra migration cho datasource liên quan; không dùng Flyway `clean` vì `clean-disabled=true`.
+- Kiểm tra khởi tạo lại, `testConnection()` và quyền mặc định nếu thay đổi storage source.
+- Dùng `AjaxJson` và exception hiện có để giữ format response; để `GlobalExceptionHandler` chuyển lỗi nghiệp vụ sang HTTP response.
+- Ghi rõ hành vi đã kiểm tra, datasource và provider liên quan. Không ghi token, mật khẩu, OAuth response hoặc log chưa che dữ liệu nhạy cảm.
+
+`pom.xml` xác nhận Java 21 và lệnh build `mvn clean package`. Thuộc tính `skipTests=true` khiến Maven bỏ qua test theo cấu hình mặc định; build thành công không chứng minh test đã chạy hoặc ứng dụng đã khởi động.
+
+Nguồn: `pom.xml`, `DataSourceBeanPostProcessor.java`, `StorageSourceContext.java`, `AbstractBaseFileService.java`, `FileChain.java`, `FileOperatorCheckAspect.java`, `CheckPasswordAspect.java`, `GlobalExceptionHandler.java`.

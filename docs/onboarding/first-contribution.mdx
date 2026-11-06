@@ -15,6 +15,8 @@ Thay đổi đầu tiên nên nhỏ, nằm trong một miền nghiệp vụ và 
 4. Nếu có storage, giữ controller/service dùng `StorageSourceContext` và `AbstractBaseFileService`; không rẽ trực tiếp vào một provider cụ thể khi cần hỗ trợ nhiều loại.
 5. Đối chiếu [Điều hướng mã nguồn](../engineering/code-navigation) và [Dữ liệu và cấu hình](../engineering/data-and-configuration), rồi build backend bằng Maven và kiểm tra lại liên kết hoặc tài liệu đã đổi.
 
+Khi cần xác định đúng tầng đặt code, xem [Convention mã nguồn](../engineering/code-conventions). Xem [Luồng mã nguồn](../engineering/code-flows) để lần theo request, storage và exception; xem [Thư viện và thành phần tái sử dụng](../engineering/reusable-components) trước khi thêm dependency, util hoặc abstraction mới.
+
 ```mermaid
 flowchart TD
     A[Route hoặc hành vi] --> B[Controller]

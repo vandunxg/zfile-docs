@@ -1,0 +1,55 @@
+---
+title: Thư viện và thành phần tái sử dụng
+sidebar_label: Thư viện và tái sử dụng
+---
+
+# Thư viện và thành phần tái sử dụng
+
+ZFile đã có framework, abstraction và util cho các luồng phổ biến. Chọn thành phần đúng giúp giữ behavior, quyền, cache và format response nhất quán. Trang này chỉ liệt kê mục đã đối chiếu từ `pom.xml` hoặc source; không phải danh sách toàn bộ lớp `Utils`.
+
+## Framework và thư viện
+
+| Nhóm | Thành phần | Dùng khi |
+| --- | --- | --- |
+| Web và validation | Spring Boot Web, AOP, Validation | Tạo route, bind/validate request hoặc áp dụng rule qua aspect. |
+| Persistence | MyBatis-Plus, HikariCP, SQLite JDBC, MySQL Connector/J | Làm việc với mapper/entity và datasource đã hỗ trợ. |
+| Migration | Flyway Core, Flyway MySQL | Thêm migration schema/data; giữ migration riêng cho SQLite và MySQL khi cần. |
+| Cache | Spring Cache, Spring Data Redis | Dùng cache annotation hoặc cache manager theo pattern của service hiện có. |
+| Xác thực | Sa-Token | Truy cập login context và quyền theo cơ chế hiện có. |
+| Chuyển đổi model | MapStruct | Tạo converter giữa request, entity và result theo converter hiện có. |
+| Chuỗi xử lý | Apache Commons Chain | Thêm command vào luồng đã có như `FileChain`, không tự quản lý thứ tự bằng controller. |
+| API documentation | Knife4j OpenAPI 3 | Khai báo metadata OpenAPI cho endpoint. |
+| Tiện ích nền | Hutool, Lombok, Fastjson2, OkHttp, Guava | Dùng API cụ thể đã có trong source thay vì thêm thư viện trùng mục đích. |
+| Storage provider | AWS SDK S3, Upyun SDK, Qiniu SDK, JSch, Sardine, Commons Net | Tích hợp provider tương ứng bên dưới abstraction storage. |
+| File và tích hợp khác | Apache POI, Commons Compress, Commons FileUpload, Spring Retry, TOTP | Chỉ dùng khi thay đổi thuộc luồng Office, archive/upload, retry hoặc 2FA có liên quan. |
+
+`pom.xml` còn có các dependency trực tiếp cho DNS cache, thông tin hệ thống, HTTP client và crypto. Trước khi thêm dependency mới, kiểm tra thư viện có cùng mục đích trong POM và điểm dùng trong source.
+
+## Abstraction và util dùng lại
+
+| Thành phần | Trách nhiệm | Dùng lại khi |
+| --- | --- | --- |
+| `AjaxJson` | Vỏ response HTTP thống nhất, có factory success, page, unauthorized, forbidden và error. | Endpoint cần trả JSON; không tự tạo format response mới. |
+| `ZFileAuthUtil` | Lấy user hiện tại; nhận biết share access và fallback về anonymous user khi không có login. | Cần danh tính người dùng trong luồng đã tham gia cơ chế xác thực/chia sẻ của ZFile. |
+| `StorageSourceContext` | Lấy, khởi tạo và hủy file service theo storage source. | Cần file service của source đã cấu hình; không new provider trực tiếp. |
+| `AbstractBaseFileService<P extends IStorageParam>` | Base class provider: source metadata, init, kiểm tra kết nối và base path theo user. | Viết hoặc mở rộng một implementation storage provider. |
+| `IStorageParam` | Marker cho parameter của một storage provider. | Khai báo param riêng để context ghép cấu hình của provider. |
+| `FileChain` và `FileContext` | Chạy các rule sau khi lấy danh sách tệp theo thứ tự cố định. | Bổ sung một rule xử lý danh sách tệp hoặc cần dùng danh sách đã qua kiểm tra. |
+| `CheckPassword` / `CheckPasswords` | Mô tả trường storage, path và password để aspect xác minh. | Endpoint cần bảo vệ bằng password cấu hình theo đường dẫn. |
+| `FileOperatorCheckAspect` | Kiểm tra quyền của các thao tác trên `AbstractBaseFileService`. | Thêm method file service; xác định quyền `FileOperatorTypeEnum` phù hợp. |
+| `RequestUtils` | Đọc HTTP `Range` header đầu tiên thành `HttpRange`. | Xử lý luồng tải/stream có hỗ trợ range request. |
+| `RequestHolder` | Lấy request/response hiện tại và nhận biết Axios request. | Cần request context tại tầng đã phụ thuộc servlet context; không truyền sang code không có HTTP context. |
+
+## Cách chọn extension point
+
+1. Nếu thay đổi là response HTTP, dùng `AjaxJson`, request model và exception handler hiện có.
+2. Nếu thay đổi cần user hiện tại hoặc share access, dùng `ZFileAuthUtil` thay vì đọc trực tiếp login ID.
+3. Nếu thay đổi gọi storage, lấy service qua `StorageSourceContext`; provider mới kế thừa `AbstractBaseFileService` và có param `IStorageParam`.
+4. Nếu thay đổi lọc/biến đổi danh sách tệp, xem `FileChain` trước; giữ thứ tự command hiện có.
+5. Nếu thay đổi là rule dùng chung trên method, kiểm tra annotation/aspect trước khi sao chép logic.
+
+## Chưa xác minh
+
+Không phải mọi lớp dưới `core/util` đều là API ổn định cho contributor. Chỉ dùng util sau khi kiểm tra caller, dependency HTTP/storage và phạm vi side effect. Không thay util hiện có hoặc thêm một `*Utils` mới chỉ vì tên lớp tương tự.
+
+Nguồn: `pom.xml`, `AjaxJson.java`, `ZFileAuthUtil.java`, `RequestUtils.java`, `RequestHolder.java`, `StorageSourceContext.java`, `AbstractBaseFileService.java`, `IStorageParam.java`, `FileChain.java`, `CheckPasswordAspect.java`, `FileOperatorCheckAspect.java`.

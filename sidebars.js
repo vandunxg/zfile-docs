@@ -43,6 +43,9 @@ const sidebars = {
             items: [
                 'engineering/architecture-overview',
                 'engineering/code-navigation',
+                'engineering/code-conventions',
+                'engineering/code-flows',
+                'engineering/reusable-components',
                 'engineering/data-and-configuration',
             ],
         },
@@ -52,6 +55,7 @@ const sidebars = {
             items: [
                 'onboarding/start-here',
                 'onboarding/first-contribution',
+                'onboarding/code-contribution-guide',
             ],
         },
         {

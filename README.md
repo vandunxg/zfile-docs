@@ -88,4 +88,4 @@ Nếu test hoặc build lỗi, workflow không deploy phiên bản mới.
 3. Kiểm tra liên kết nội bộ, Mermaid nếu có, rồi chạy `yarn test` và `yarn build`.
 4. Gửi thay đổi theo quy trình của repository.
 
-Xem [Quy ước biên soạn](./docs/engineering/documentation-standards.mdx) để biết cách viết và kiểm tra tài liệu.
+Xem [Hướng dẫn đóng góp mã nguồn](./docs/onboarding/code-contribution-guide.mdx) khi thay đổi backend ZFile. Xem [Quy ước biên soạn](./docs/engineering/documentation-standards.mdx) để biết cách viết và kiểm tra tài liệu.

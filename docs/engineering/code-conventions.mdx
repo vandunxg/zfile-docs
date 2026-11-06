@@ -1,0 +1,55 @@
+---
+title: Convention mã nguồn
+sidebar_label: Convention mã nguồn
+---
+
+# Convention mã nguồn
+
+Các quy tắc dưới đây giúp contributor đặt thay đổi vào đúng tầng của ZFile. Chúng mô tả pattern đã có trong mã nguồn, không phải quy ước đặt tên hoặc quy trình Git chưa được xác minh.
+
+## Ranh giới các tầng
+
+| Tầng | Trách nhiệm đã xác minh | Khi sửa |
+| --- | --- | --- |
+| Controller | Khai báo route, nhận request, gọi service/converter và trả `AjaxJson`. | Giữ logic HTTP ở đây; lần sang service khi thay đổi cần quy tắc hoặc dữ liệu. |
+| Service | Điều phối nghiệp vụ, persistence, cache, transaction, event hoặc khởi tạo context. | Dùng service hiện có thay vì gọi mapper/context trực tiếp từ controller khi luồng đã được service quản lý. |
+| Mapper và XML | Mapper Java khai báo truy vấn; MyBatis-Plus cung cấp `BaseMapper`; XML chứa SQL tùy chỉnh. | Đồng bộ signature mapper với statement XML, entity và model bị ảnh hưởng. |
+| Storage abstraction | `StorageSourceContext` ánh xạ source đến file service; `AbstractBaseFileService` là base class cho provider. | Thêm hoặc đổi provider qua context, `StorageTypeEnum` và param `IStorageParam`. |
+| Aspect và chain | Aspect áp dụng rule cắt ngang; `FileChain` xử lý danh sách tệp qua các command có thứ tự. | Kiểm tra extension point này trước khi lặp lại rule ở controller hoặc provider. |
+| Exception handler | `GlobalExceptionHandler` đổi exception thành response hoặc redirect theo loại request. | Ném exception nghiệp vụ phù hợp; không tự tạo format lỗi khác ở từng endpoint. |
+
+## HTTP, validation và response
+
+Controller dùng mapping của Spring MVC, `@RequestBody` và `@Valid` tại những request cần validation. Ví dụ, `FileController.list()` lấy `storageKey`, tra ID qua `StorageSourceService`, lấy file service qua `StorageSourceContext` rồi trả `AjaxJson<FileInfoResult>`.
+
+`AjaxJson` là vỏ response chung: `code`, `msg`, `data`, `dataCount` và `traceId`; code thành công là `0`. Dùng `getSuccessData()`, `getPageData()` hoặc factory lỗi tương ứng thay vì tạo JSON response cục bộ.
+
+Khi lỗi là một phần của luồng nghiệp vụ, dùng `BizException` hoặc exception nghiệp vụ chuyên biệt. `GlobalExceptionHandler` xử lý validation, lỗi quyền, đăng nhập và các exception này để tạo HTTP status/response phù hợp.
+
+## Dữ liệu và migration
+
+`StorageSourceMapper` là ví dụ mapper `@Mapper` kế thừa `BaseMapper<StorageSource>` và khai báo thêm method truy vấn. SQL XML tương ứng nằm trong `resources/mapper/`; cấu hình MyBatis-Plus nạp mapper XML từ classpath.
+
+`DataSourceBeanPostProcessor` chọn chính xác một location Flyway: `classpath:db/migration-sqlite` cho `org.sqlite.JDBC` hoặc `classpath:db/migration-mysql` cho `com.mysql.cj.jdbc.Driver`. Vì vậy, thay đổi schema dùng cho cả hai driver cần migration riêng ở hai thư mục. Giữ tên versioned migration theo `V...__...sql` và không sửa migration đã được áp dụng.
+
+`MyDatabaseIdProvider` cho phép XML rẽ SQL theo `_databaseId` là `mysql` hoặc `sqlite`. Dùng cơ chế này khi khác biệt nằm trong một statement; không suy luận rằng mọi query đều chạy được như nhau trên hai driver.
+
+## Storage và lifecycle
+
+`AbstractBaseFileService<P extends IStorageParam>` giữ `storageId`, tên source, param và trạng thái khởi tạo. `init(name, storageId, param)` chỉ nhận source chưa khởi tạo; sau đó implementation thực thi `init()`. `testConnection()` gọi `fileList("/")` và chỉ đặt `isInitialized=true` khi không có exception.
+
+`StorageSourceService.saveStorageSource()` hủy context cũ khi cập nhật, lưu source và config, gọi `StorageSourceContext.init()` rồi thêm quyền mặc định khi tạo source mới. Đặt lifecycle tương tự ở service, không tách các bước này vào controller.
+
+## Rule cắt ngang
+
+- `FileOperatorCheckAspect` bao quanh các thao tác của `AbstractBaseFileService` để kiểm tra quyền theo `FileOperatorTypeEnum`.
+- `CheckPasswordAspect` đọc metadata từ `@CheckPassword` hoặc `@CheckPasswords`, lấy `storageId`, rồi xác minh mật khẩu qua `PasswordConfigService`.
+- `FileChain.init()` thêm command theo thứ tự: quyền truy cập, mật khẩu thư mục, ẩn tệp, sắp xếp, quyền tải xuống.
+
+Nếu rule mới áp dụng cho nhiều endpoint hoặc method storage, tìm aspect, annotation hoặc command phù hợp trước. Nếu chỉ áp dụng cho một hành vi nghiệp vụ, giữ rule tại service chịu trách nhiệm.
+
+## Chưa xác minh
+
+Mã nguồn hiện có chưa cung cấp một tài liệu chính thức về naming convention, branch/commit convention, pull request hay review bắt buộc. Không coi pattern quan sát được ở một lớp là quy định chung nếu chưa có thêm nguồn.
+
+Nguồn: `FileController.java`, `StorageSourceController.java`, `StorageSourceService.java`, `StorageSourceMapper.java`, `MyDatabaseIdProvider.java`, `DataSourceBeanPostProcessor.java`, `AbstractBaseFileService.java`, `FileOperatorCheckAspect.java`, `CheckPasswordAspect.java`, `FileChain.java`, `AjaxJson.java`, `BizException.java`, `GlobalExceptionHandler.java`.
