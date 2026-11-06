@@ -4,8 +4,8 @@
 const config = {
     title: 'Tài liệu ZFile',
     tagline: 'Business và Engineering Documentation',
-    url: 'https://docs.zfile.vip',
-    baseUrl: '/',
+    url: 'https://vandunxg.github.io',
+    baseUrl: '/zfile-docs/',
     onBrokenLinks: 'throw',
     i18n: {
         defaultLocale: 'vi',
