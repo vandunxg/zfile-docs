@@ -16,7 +16,7 @@ Bắt đầu từ [Tài liệu ZFile](./docs/intro.mdx) hoặc mở [site đã x
 
 ## Yêu cầu
 
-- Node.js 20, theo cấu hình GitHub Actions.
+- Node.js 22.12.0 trở lên, theo yêu cầu của Mermaid.
 - Yarn 1.22.22. Phiên bản này được khai báo trong `package.json`.
 - Corepack để kích hoạt Yarn nếu máy chưa có lệnh `yarn`.
 

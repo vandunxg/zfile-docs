@@ -13,6 +13,7 @@ test('deploys the built docs through GitHub Pages Actions', async () => {
   const workflow = await readFile('.github/workflows/deploy.yml', 'utf8');
 
   assert.match(workflow, /push:\s*\n\s+branches:\s*\n\s+[-'] main/);
+  assert.match(workflow, /node-version:\s+22\.12\.0/);
   assert.match(workflow, /workflow_dispatch:/);
   assert.match(workflow, /pages: write/);
   assert.match(workflow, /id-token: write/);
